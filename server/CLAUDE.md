@@ -11,6 +11,7 @@ npm run typecheck         # tsc --noEmit — the real type gate
 npm run typecheck:tests   # tsc over tests/ — CI runs this too; vitest green does NOT mean typed mocks compile
 npm run lint              # eslint --fix
 npm run lint:check        # eslint, no fix (CI)
+npm run test:runtime      # built Vercel HTTP entry + sanitizer + auth smoke (after build)
 npm run test              # vitest run; also test:unit / test:integration / test:ws / test:e2e
 npm run test:coverage     # istanbul coverage; per-domain ratchet over src/nest/**
 npm run gen:plugin-facts  # regenerate the plugin-protocol tables into plugin-sdk/ + shared/
@@ -65,7 +66,7 @@ Nest owns everything. Every domain is a DI module under `src/nest/<domain>/` (`c
 
 `tests/` is split into `unit/` (mirrors `src/`), `integration/`, `e2e/` (one `<domain>.e2e.test.ts` per module, booting the real guards against a temp DB via `tests/e2e/harness.ts`) and `websocket/`; helpers in `tests/helpers/`, fixtures in `tests/fixtures/`.
 
-- **vitest uses the SWC plugin**, not esbuild, because Nest's DI needs emitted decorator metadata. Keep that in `vitest.config.ts`. Pool is `forks` (isolated DB per worker). The config also aliases `@modelcontextprotocol/sdk/*` to its CJS dist because the SDK's exports map is unresolvable.
+- **vitest uses the SWC plugin**, not esbuild, because Nest's DI needs emitted decorator metadata. Keep that in `vitest.config.ts`. Pool is `forks` (isolated DB per worker). MCP SDK subpath imports include their published `.js` suffix so the real Node loader and Vitest resolve the same exports; do not add aliases that hide broken runtime imports.
 - **Coverage is a per-domain ratchet over `src/nest/**`** (≥80% floor, most domains pinned higher). Regenerate the block with `scripts/coverage-thresholds.mjs` when coverage rises; never lower a threshold to land a change.
 - CI also runs SonarCloud on the PR's new lines — see the root `CLAUDE.md`.
 

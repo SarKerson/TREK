@@ -1,10 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import { isVercelRuntime } from '../../runtime';
+import { DatabaseService } from '../database/database.service';
+import { SharedAuthStateRepository } from '../auth/shared-auth-state.repository';
 
 interface Attempt { count: number; first: number }
 
 /**
- * In-memory per-IP rate limiter, ported 1:1 from the legacy auth route's
- * `rateLimiter`. Each named bucket keeps its own attempt map; `check` returns
+ * Shared DB per-IP limits on Vercel, otherwise the legacy in-memory limiter.
+ * Each local named bucket keeps its own attempt map; `check` returns
  * false once a key exceeds `max` within `windowMs` (the caller answers 429).
  *
  * The legacy route ran a setInterval to garbage-collect expired records. There
@@ -17,6 +20,12 @@ interface Attempt { count: number; first: number }
  */
 @Injectable()
 export class RateLimitService {
+  private readonly sharedState?: SharedAuthStateRepository;
+
+  constructor(@Optional() db?: DatabaseService) {
+    if (db) this.sharedState = new SharedAuthStateRepository(db);
+  }
+
   private readonly buckets = new Map<string, Map<string, Attempt>>();
   /** Last sweep per bucket, so a busy bucket doesn't keep a quiet one from being cleaned. */
   private readonly lastSweep = new Map<string, number>();
@@ -29,6 +38,10 @@ export class RateLimitService {
 
   /** Returns true when the request is allowed, false when it should be rejected (429). */
   check(bucket: string, key: string, max: number, windowMs: number, now: number): boolean {
+    if (isVercelRuntime()) {
+      if (!this.sharedState) throw new Error('Shared rate-limit database is required in Vercel');
+      return this.sharedState.checkRateLimit(`ip:${bucket}`, key, max, windowMs, now);
+    }
     const store = this.store(bucket);
     this.sweep(bucket, store, windowMs, now);
     const record = store.get(key);
@@ -52,7 +65,7 @@ export class RateLimitService {
     this.lastSweep.set(bucket, now);
   }
 
-  /** Test helper: clear a bucket (mirrors the legacy exported maps used for resets). */
+  /** Local test helper: clear a bucket (shared DB tests clear their isolated tables). */
   reset(bucket?: string): void {
     if (bucket) this.buckets.get(bucket)?.clear();
     else { this.buckets.clear(); this.lastSweep.clear(); }

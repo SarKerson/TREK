@@ -17,6 +17,7 @@
  */
 
 import Database from 'better-sqlite3';
+import type { DbConnection } from '../../src/db/adapter';
 import type { INestApplication } from '@nestjs/common';
 import { createTables } from '../../src/db/schema';
 import { runMigrations } from '../../src/db/migrations';
@@ -27,6 +28,15 @@ import type { RateLimitService } from '../../src/nest/common/rate-limit.service'
 // Keep in sync with schema.ts + migrations.ts. Intentionally excluded: categories, addons,
 // photo_providers, photo_provider_fields, schema_version (seed/config data, not user data).
 const RESET_TABLES = [
+  'idempotency_claims',
+  'trek_import_jobs',
+  'staged_upload_intents',
+  'upload_intents',
+  'realtime_presence',
+  'realtime_events',
+  'auth_ephemeral_state',
+  'auth_rate_limits',
+  'ephemeral_tokens',
   'school_holiday_periods',
   'school_holiday_regions',
   'school_holiday_countries',
@@ -166,7 +176,7 @@ const DEFAULT_PHOTO_PROVIDERS = [
  * survives into the next case: set what a case needs rather than assuming the
  * seeded default.
  */
-export function setAddonEnabled(db: Database.Database, addonId: string, enabled: boolean): void {
+export function setAddonEnabled(db: DbConnection, addonId: string, enabled: boolean): void {
   db.prepare(
     'INSERT INTO addons (id, name, type, enabled) VALUES (?, ?, ?, ?) ' +
       'ON CONFLICT(id) DO UPDATE SET enabled = excluded.enabled',
@@ -175,7 +185,7 @@ export function setAddonEnabled(db: Database.Database, addonId: string, enabled:
 
 /** Collab's sub-feature flags are opt-out app_settings, not addon rows. */
 export function setCollabFeature(
-  db: Database.Database,
+  db: DbConnection,
   feature: 'chat' | 'notes' | 'polls' | 'whatsnext',
   enabled: boolean,
 ): void {
@@ -185,7 +195,7 @@ export function setCollabFeature(
   );
 }
 
-function seedDefaults(db: Database.Database): void {
+function seedDefaults(db: DbConnection): void {
   const insertCat = db.prepare('INSERT OR IGNORE INTO categories (name, color, icon) VALUES (?, ?, ?)');
   for (const cat of DEFAULT_CATEGORIES) insertCat.run(cat.name, cat.color, cat.icon);
 
@@ -217,7 +227,7 @@ export function createTestDb(): Database.Database {
  * Clears all user-generated data from the test DB and re-seeds defaults.
  * Call in beforeEach() for test isolation within a file.
  */
-export function resetTestDb(db: Database.Database): void {
+export function resetTestDb(db: DbConnection): void {
   db.exec('PRAGMA foreign_keys = OFF');
   const existingTables = new Set(
     (db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[]).map(r => r.name)
@@ -253,7 +263,7 @@ export const CAN_ACCESS_TRIP_SQL = `
  *   const testDb = createTestDb();
  *   vi.mock('../../src/db/database', () => buildDbMock(testDb));
  */
-export function buildDbMock(testDb: Database.Database) {
+export function buildDbMock(testDb: DbConnection) {
   return {
     db: testDb,
     closeDb: () => {},

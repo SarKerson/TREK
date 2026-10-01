@@ -1,3 +1,4 @@
+import { RuntimeCapabilityGuard } from './common/runtime-capability.guard';
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { ZodValidationPipe } from './common/zod-validation.pipe';
@@ -96,6 +97,7 @@ import { RealtimeGatewayModule } from './realtime/realtime-gateway.module';
     // given them rather than a 403 that confirms the route exists. Inert unless
     // the instance is centrally administered AND the route carries the marker.
     { provide: APP_GUARD, useClass: ManagedGuard },
+    { provide: APP_GUARD, useClass: RuntimeCapabilityGuard },
     // Global error-envelope normaliser (DI-registered so it also catches
     // framework-level exceptions like the not-found handler).
     { provide: APP_FILTER, useClass: TrekExceptionFilter },

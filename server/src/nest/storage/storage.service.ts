@@ -4,15 +4,17 @@ import { randomUUID } from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
 import type { Readable } from 'node:stream';
 import { Injectable } from '@nestjs/common';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { contentTypeFor } from './content-type';
 import type { ReplicaFailure } from './drivers/mirror.driver';
 import { decideRange, isNotModified, validatorsFor, type ServingHeaders, type Validators } from './http-serving';
 import { assertValidKey } from './storage-keys';
 import { StorageRegistryService } from './storage-registry.service';
+import { VercelBlobDriver } from './drivers/vercel-blob.driver';
 import {
   isClientAbortError,
   StorageNotFoundError,
+  StorageBackendError,
   type ByteRange,
   type LocalTempFile,
   type ObjectStat,
@@ -83,6 +85,20 @@ export class StorageService {
   async stat(category: ServedCategory, name: string): Promise<ObjectStat | null> {
     const { driver, key } = this.resolve(category, name);
     return driver.stat(key);
+  }
+
+  /** Only a private Blob backend supports the direct-upload control plane. */
+  directUploadPath(category: ServedCategory, name: string): string {
+    const { driver, key } = this.resolve(category, name);
+    if (!(driver instanceof VercelBlobDriver)) throw new StorageBackendError('Direct uploads are unavailable for this storage backend');
+    return key;
+  }
+
+  async createDirectUploadGrant(category: ServedCategory, name: string, size: number,
+    contentType: string, expiresAt: number, multipart: boolean, request: Request) {
+    const { driver, key } = this.resolve(category, name);
+    if (!(driver instanceof VercelBlobDriver)) throw new StorageBackendError('Direct uploads are unavailable for this storage backend');
+    return driver.createUploadGrant(key, size, contentType, expiresAt, multipart, request);
   }
 
   async exists(category: ServedCategory, name: string): Promise<boolean> {

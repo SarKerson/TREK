@@ -17,7 +17,6 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import type { Options } from 'multer';
-import path from 'path';
 import fs from 'fs';
 import type { User } from '../../types';
 import { CollabService } from './collab.service';
@@ -35,13 +34,10 @@ import {
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { RequirePermission, TripAccessGuard } from '../permissions/trip-access.guard';
-import { BLOCKED_EXTENSIONS } from '../files/files.constants';
+import { allowsChatImage, allowsNoteFile, MAX_CHAT_IMAGES } from './collab-upload-policy';
+export { MAX_NOTE_FILE_SIZE } from './collab-upload-policy';
 import { SpoolCleanupInterceptor } from '../common/spool-cleanup.interceptor';
 
-export const MAX_NOTE_FILE_SIZE = 50 * 1024 * 1024;
-const MAX_CHAT_IMAGES = 4;
-const CHAT_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
-const CHAT_IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp']);
 /**
  * The extension is checked as well as the type, and both have to agree.
  *
@@ -59,11 +55,7 @@ export const collabChatImageFilter: Options['fileFilter'] = (_req, file, cb) => 
     err.statusCode = 400;
     return cb(err);
   };
-  if (!CHAT_IMAGE_TYPES.has(file.mimetype)) {
-    return reject('Only JPEG, PNG, GIF, and WebP images are allowed');
-  }
-  const ext = path.extname(file.originalname).toLowerCase();
-  if (BLOCKED_EXTENSIONS.includes(ext) || !CHAT_IMAGE_EXTENSIONS.has(ext)) {
+  if (!allowsChatImage(file.originalname, file.mimetype)) {
     return reject('Only JPEG, PNG, GIF, and WebP images are allowed');
   }
   cb(null, true);
@@ -72,8 +64,7 @@ export const collabChatImageFilter: Options['fileFilter'] = (_req, file, cb) => 
 // options (spool destination, filename, limits) come from the storage upload
 // factory.
 export const collabNoteFileFilter: Options['fileFilter'] = (_req, file, cb) => {
-  const ext = path.extname(file.originalname).toLowerCase();
-  if (BLOCKED_EXTENSIONS.includes(ext) || file.mimetype.includes('svg') || file.mimetype.includes('html') || file.mimetype.includes('javascript')) {
+  if (!allowsNoteFile(file.originalname, file.mimetype)) {
     const err: Error & { statusCode?: number } = new Error('File type not allowed');
     err.statusCode = 400;
     return cb(err);

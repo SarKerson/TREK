@@ -1,6 +1,7 @@
 import { Injectable, type OnApplicationShutdown } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
+import { isVercelRuntime } from '../../runtime';
 import { readEnv } from '../../app-config';
 import { RuntimeEnvService } from '../app-config/runtime-env.service';
 
@@ -39,7 +40,7 @@ export class CronRegistrarService implements OnApplicationShutdown {
 
   /** False under NODE_ENV=test — the single gate keeping the suites timer-free. */
   isEnabled(): boolean {
-    return !this.runtimeEnv.isTest();
+    return !isVercelRuntime() && !this.runtimeEnv.isTest();
   }
 
   /**

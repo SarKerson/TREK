@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type express from 'express';
-import { mcpAuthMetadataRouter } from '@modelcontextprotocol/sdk/server/auth/router';
-import type { OAuthMetadata } from '@modelcontextprotocol/sdk/shared/auth';
+import { mcpAuthMetadataRouter } from '@modelcontextprotocol/sdk/server/auth/router.js';
+import type { OAuthMetadata } from '@modelcontextprotocol/sdk/shared/auth.js';
 import { ALL_SCOPES } from '../../mcp/scopes';
 import { getMcpSafeUrl } from '../../app-config';
 

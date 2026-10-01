@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3';
+import type { DbConnection } from './adapter';
 import { carryVias, dayStops, locatedIds, seatAmong } from '../nest/accommodations/night-seat';
 
 /**
@@ -24,7 +24,7 @@ import { carryVias, dayStops, locatedIds, seatAmong } from '../nest/accommodatio
  * check-in, ties by booking), so one pass leaves every night in its seat and a second
  * pass moves nothing. Returns how many nights moved.
  */
-export function reseatBookedNights(db: Database.Database): number {
+export function reseatBookedNights(db: DbConnection): number {
   const nights = db.prepare(`
     SELECT da.id, da.day_id, a.id AS accommodation_id, a.check_in
     FROM day_assignments da

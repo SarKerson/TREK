@@ -92,11 +92,13 @@ export class BookingImportService {
     endpoints: { name?: string | null; lat?: number | null; lng?: number | null }[] | undefined,
     context: { location?: string | null; address?: string | null },
     cache: Map<string, { lat: number; lng: number } | null>,
+    signal?: AbortSignal,
   ): Promise<string[]> {
     if (!Array.isArray(endpoints)) return [];
     const unresolved: string[] = [];
 
     for (const ep of endpoints) {
+      signal?.throwIfAborted();
       if (ep.lat != null && ep.lng != null) continue;
       if (!ep.name) continue;
 
@@ -116,6 +118,7 @@ export class BookingImportService {
       let found: { lat: number; lng: number } | null = null;
       try {
         for (const q of queries) {
+          signal?.throwIfAborted();
           const hit = await this.maps.geocodeQuery(q);
           if (hit) { found = hit; break; }
         }
@@ -135,6 +138,7 @@ export class BookingImportService {
     mode: BookingImportMode,
     userId: number,
     onProgress?: (done: number, total: number, fileName: string) => void,
+    signal?: AbortSignal,
   ): Promise<BookingImportPreviewResponse> {
     const kitineraryAvailable = this.extractor.isAvailable();
     const aiAvailable = this.llmParse.isAvailable(userId);
@@ -152,6 +156,7 @@ export class BookingImportService {
 
     let processed = 0;
     for (const file of files) {
+      signal?.throwIfAborted();
       let kiItems: KiReservation[] = [];
       let aiUsed = false;
 
@@ -164,15 +169,18 @@ export class BookingImportService {
         }
       }
 
+      signal?.throwIfAborted();
       // Stage 1b: LLM fallback.
       const runLlm = aiAvailable && (mode === 'force-ai' || (mode === 'fallback-on-empty' && kiItems.length === 0));
       if (runLlm) {
         aiUsed = true;
-        const llm = await this.llmParse.parse({ buffer: file.buffer, originalName: file.originalname }, userId);
+        const input = { buffer: file.buffer, originalName: file.originalname };
+        const llm = signal ? await this.llmParse.parse(input, userId, signal) : await this.llmParse.parse(input, userId);
         kiItems = llm.kiItems;
         allWarnings.push(...llm.warnings);
       }
 
+      signal?.throwIfAborted();
       fileReports.push({ fileName: file.originalname, aiAvailable, aiUsed });
 
       if (kiItems.length === 0) {
@@ -188,7 +196,7 @@ export class BookingImportService {
           const missed = await this.geocodeEndpoints(
             (it as { endpoints?: { name?: string | null; lat?: number | null; lng?: number | null }[] }).endpoints,
             { location: (it as { location?: string | null }).location, address: (it as { _venue?: { address?: string | null } })._venue?.address },
-            geoCache,
+            geoCache, signal,
           );
           // Kept on the item rather than filtered, so it is still editable in the
           // review form, and said out loud rather than disappearing on save.
@@ -201,6 +209,7 @@ export class BookingImportService {
         allWarnings.push(...warnings);
       }
 
+      signal?.throwIfAborted();
       // Report per-file progress so a background import can drive a live widget.
       onProgress?.(++processed, files.length, file.originalname);
     }

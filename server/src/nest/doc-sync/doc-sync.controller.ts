@@ -1,3 +1,4 @@
+import { isVercelRuntime } from '../../runtime';
 import {
   Body,
   Controller,
@@ -299,7 +300,7 @@ export class DocSyncController {
     // over anything put into the link state.
     const conn = this.config.getConnection(res.data.connection_id);
     const provider = conn ? this.registry.get(conn.provider_id) : undefined;
-    if (conn && provider?.registerWebhook) {
+    if (!isVercelRuntime() && conn && provider?.registerWebhook) {
       const base = publicOrigin(req);
       if (base) {
         const hook = await provider.registerWebhook(
@@ -322,7 +323,8 @@ export class DocSyncController {
 
     // A first run right away, so the user sees something happen instead of
     // waiting out a poll interval and wondering whether it worked.
-    void this.sync.syncLink(res.data, { full: true });
+    if (isVercelRuntime()) await this.sync.syncLink(res.data, { full: true });
+    else void this.sync.syncLink(res.data, { full: true });
     return this.config.publicLink(this.config.getLink(res.data.id) ?? res.data, publicOrigin(req));
   }
 

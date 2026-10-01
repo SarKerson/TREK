@@ -1,6 +1,8 @@
 import type { TranslationStrings } from '../types';
 
 const common: TranslationStrings = {
+  'common.serverlessLimitations':
+    'Ce déploiement sans serveur ne propose ni plugins persistants, ni synchronisation automatique en arrière-plan, ni sauvegarde ou restauration complète de l’instance, ni MCP. La planification des voyages et la synchronisation manuelle restent disponibles.',
   'common.save': 'Enregistrer',
   'common.showMore': 'Voir plus',
   'common.showLess': 'Voir moins',

@@ -30,6 +30,8 @@ export interface ObjectStat {
   key: string;
   size: number;
   mtimeMs: number;
+  /** Reported by remote storage; used to verify constrained direct uploads. */
+  contentType?: string;
   /**
    * The backend's own entity tag when it has one — S3 returns it on every
    * HEAD/GET. Always a wire-ready HTTP entity-tag (quoted, `W/`-prefixed if

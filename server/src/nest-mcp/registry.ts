@@ -13,8 +13,8 @@ import type {
   ResourceTemplateOptions,
   ToolOptions,
 } from './types';
-import { ResourceTemplate as SdkResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
+import { ResourceTemplate as SdkResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 interface BoundEntry {

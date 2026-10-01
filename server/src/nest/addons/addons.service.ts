@@ -1,3 +1,4 @@
+import { isVercelRuntime } from '../../runtime';
 import { Injectable } from '@nestjs/common';
 import { ADDON_IDS } from '../../addons';
 import { DatabaseService } from '../database/database.service';
@@ -30,6 +31,7 @@ export class AddonsService {
   }
 
   isAddonEnabled(addonId: string): boolean {
+    if (isVercelRuntime() && addonId === ADDON_IDS.MCP) return false;
     const addon = this.db.prepare('SELECT enabled FROM addons WHERE id = ?').get(addonId) as
       | { enabled: number }
       | undefined;
@@ -138,7 +140,7 @@ export class AddonsService {
       collabFeatures: this.getCollabFeatures(),
       bagTracking: this.getBagTracking().enabled,
       addons: [
-        ...addons.map((a) => ({ ...a, enabled: !!a.enabled })),
+        ...addons.filter((a) => !(isVercelRuntime() && a.id === ADDON_IDS.MCP)).map((a) => ({ ...a, enabled: !!a.enabled })),
         ...providers.map((p) => ({
           id: p.id,
           name: p.name,

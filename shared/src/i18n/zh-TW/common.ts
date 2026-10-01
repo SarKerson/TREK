@@ -1,6 +1,8 @@
 import type { TranslationStrings } from '../types';
 
 const common: TranslationStrings = {
+  'common.serverlessLimitations':
+    '此無伺服器部署不提供持續運行的外掛程式、背景自動同步、完整執行個體備份或還原，以及 MCP。核心行程規劃和手動同步仍可使用。',
   'common.save': '儲存',
   'common.showMore': '顯示更多',
   'common.showLess': '收起',

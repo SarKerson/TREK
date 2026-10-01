@@ -1,4 +1,4 @@
-import type Database from 'better-sqlite3';
+import type { DbStatement } from '../../db/adapter';
 import { seamViaIndex } from '@trek/shared/roadtrip';
 
 /**
@@ -13,7 +13,7 @@ import { seamViaIndex } from '@trek/shared/roadtrip';
  * transaction.
  */
 export interface SeatConnection {
-  prepare(sql: string): Database.Statement;
+  prepare(sql: string): DbStatement;
 }
 
 /** A stop of one day as the rule sees it: the clock it is measured by (dayStops), the

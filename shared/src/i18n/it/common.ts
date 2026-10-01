@@ -1,6 +1,8 @@
 import type { TranslationStrings } from '../types';
 
 const common: TranslationStrings = {
+  'common.serverlessLimitations':
+    'Questa distribuzione serverless non offre plugin persistenti, sincronizzazione automatica in background, backup o ripristino completo dell’istanza, né MCP. La pianificazione dei viaggi e la sincronizzazione manuale restano disponibili.',
   'common.save': 'Salva',
   'common.showMore': 'Mostra di più',
   'common.showLess': 'Mostra meno',

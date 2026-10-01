@@ -9,8 +9,9 @@
  * directly here. Read at call time so tests and runtime env changes take effect
  * immediately.
  */
+import { isVercelRuntime } from '../../runtime';
 import { readEnv } from '../../app-config';
 
 export function pluginsEnabled(): boolean {
-  return readEnv().plugins.enabled;
+  return !isVercelRuntime() && readEnv().plugins.enabled;
 }

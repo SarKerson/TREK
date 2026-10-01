@@ -1,6 +1,8 @@
 import type { TranslationStrings } from '../types';
 
 const common: TranslationStrings = {
+  'common.serverlessLimitations':
+    'Toto bezserverové nasazení nepodporuje trvalé pluginy, automatickou synchronizaci na pozadí, úplnou zálohu či obnovu instance ani MCP. Plánování cest a ruční synchronizace zůstávají dostupné.',
   'common.save': 'Uložit',
   'common.showMore': 'Zobrazit více',
   'common.showLess': 'Zobrazit méně',

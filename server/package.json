@@ -22,7 +22,8 @@
     "test:integration": "vitest run tests/integration",
     "test:ws": "vitest run tests/websocket",
     "test:e2e": "vitest run tests/e2e",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:runtime": "node --experimental-require-module scripts/smoke-vercel-runtime.cjs"
   },
   "dependencies": {
     "@aws-lite/client": "^0.23.7",
@@ -38,6 +39,7 @@
     "@nestjs/websockets": "^11.1.29",
     "@simplewebauthn/server": "^13.3.2",
     "@trek/shared": "*",
+    "@vercel/blob": "2.8.0",
     "archiver": "^6.0.1",
     "bcryptjs": "^2.4.3",
     "better-sqlite3": "^13.0.3",
@@ -53,6 +55,7 @@
     "jimp": "^1.6.1",
     "json5": "^2.2.3",
     "jsonwebtoken": "^9.0.2",
+    "libsql": "0.5.29",
     "nestjs-zod": "^5.5.0",
     "nodemailer": "^9.1.1",
     "otplib": "^12.0.1",

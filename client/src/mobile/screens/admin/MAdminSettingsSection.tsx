@@ -507,7 +507,7 @@ export default function MAdminSettingsSection({ admin, t }: MAdminSettingsSectio
       </MAdminCard>
 
       {/* Danger zone */}
-      <MAdminCard className="border-[color:color-mix(in_srgb,var(--m-st-danger)_28%,transparent)]">
+      {!admin.runtimeCapabilities?.privateBlobUploads && <MAdminCard className="border-[color:color-mix(in_srgb,var(--m-st-danger)_28%,transparent)]">
         <div className="mb-1 flex items-center gap-2 text-[color:var(--m-st-danger)]">
           <AlertTriangle size={14} strokeWidth={2.2} />
           <span className="text-[0.875rem] font-extrabold">Danger Zone</span>
@@ -523,7 +523,7 @@ export default function MAdminSettingsSection({ admin, t }: MAdminSettingsSectio
             </MAdminButton>
           }
         />
-      </MAdminCard>
+      </MAdminCard>}
     </div>
   )
 }

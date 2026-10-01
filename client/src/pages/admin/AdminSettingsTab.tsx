@@ -732,7 +732,7 @@ export default function AdminSettingsTab({ admin, t }: AdminSettingsTabProps): R
           harmless toggle where a mis-aimed click can reach it. */}
       {/* Rotating the secret signs every user out and fixes nothing an instance admin
           can reach: the file it writes belongs to the host. */}
-      {!managed && (<>
+      {!managed && !admin.runtimeCapabilities?.privateBlobUploads && (<>
       {/* Danger Zone */}
       <div className="bg-white rounded-xl border border-red-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-red-100 bg-red-50">

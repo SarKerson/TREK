@@ -27,6 +27,7 @@ function recorder() {
       try { body = JSON.parse(raw) } catch { body = raw }
     }
     log.push({ method: request.method, url: url.pathname + url.search, body })
+    if (url.pathname === '/api/health/features') return HttpResponse.json({ bookingImport: false, aiParsing: false })
     return HttpResponse.json({ ok: true })
   })
 }
@@ -50,6 +51,7 @@ async function assertCalls(calls: Call[]): Promise<void> {
   for (const c of calls) {
     log = []
     await c.r()
+    if (c.e !== 'GET /api/health/features') log = log.filter(item => item.url !== '/api/health/features')
     expect(log.length, `${c.n}: expected exactly one request`).toBe(1)
     const rec = log[0]
     const [path] = rec.url.split('?')

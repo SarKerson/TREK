@@ -17,8 +17,10 @@ import { dayNotesHandlers } from './dayNotes';
 import { adminHandlers } from './admin';
 import { sharedHandlers } from './shared';
 import { externalHandlers } from './external';
+import { healthHandlers } from './health';
 
 export const defaultHandlers = [
+  ...healthHandlers,
   ...authHandlers,
   ...settingsHandlers,
   ...addonHandlers,

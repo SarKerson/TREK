@@ -280,7 +280,7 @@ export const storageAdminStateSchema = z.object({
   backends: z.array(
     z.object({
       name: z.string(),
-      type: z.enum(STORAGE_BACKEND_TYPE_IDS),
+      type: z.enum([...STORAGE_BACKEND_TYPE_IDS, 'vercel-blob']),
       source: storageBackendSourceSchema,
       /** Secret-kind fields carry MASKED_SETTING_VALUE — never a stored value. */
       options: z.record(z.string(), z.union([z.string(), z.number(), z.array(z.string())])),

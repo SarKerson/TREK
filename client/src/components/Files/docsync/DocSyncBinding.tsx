@@ -204,14 +204,14 @@ export default function DocSyncBinding({
                 />
               </Row>
 
-              <Row label={t('docsync.syncEnabled')} hint={t('docsync.binding.autoHint')}>
+              {sync.backgroundAutosync !== false && <Row label={t('docsync.syncEnabled')} hint={t('docsync.binding.autoHint')}>
                 <span className="flex justify-end">
                   <ToggleSwitch
                     on={link.syncEnabled}
                     onToggle={() => void sync.updateLink(link.id, { syncEnabled: !link.syncEnabled })}
                   />
                 </span>
-              </Row>
+              </Row>}
 
               {/* Only where TREK could not subscribe itself. Papra's webhook CRUD
                   is closed to API keys and Nextcloud's needs admin rights, so the

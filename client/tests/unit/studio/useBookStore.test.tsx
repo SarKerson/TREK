@@ -472,6 +472,29 @@ describe('another editor saving', () => {
     return { ...view, onRemote }
   }
 
+  it('refreshes canonical state after a book room reconnect acknowledgement', async () => {
+    const { result, onRemote } = await withBook()
+    api.getBook.mockResolvedValue({ book: record({ version: 8, document: doc('after reconnect') }) })
+    await act(async () => {
+      for (const listener of listeners) listener({ type: 'book:joined', journeyId: 9 })
+      for (let i = 0; i < 10; i++) await Promise.resolve()
+    })
+    expect(result.current.record?.version).toBe(8)
+    expect(onRemote.mock.calls[0][0].title).toBe('after reconnect')
+  })
+
+  it('preserves unsaved book edits when the room rejoins', async () => {
+    const { result, onRemote } = await withBook()
+    act(() => { result.current.queueSave(doc('mine'), 'T') })
+    const reads = api.getBook.mock.calls.length
+    await act(async () => {
+      for (const listener of listeners) listener({ type: 'book:joined', journeyId: 9 })
+      for (let i = 0; i < 10; i++) await Promise.resolve()
+    })
+    expect(api.getBook).toHaveBeenCalledTimes(reads)
+    expect(onRemote).not.toHaveBeenCalled()
+  })
+
   it('takes their version when nothing local is outstanding', async () => {
     const { result, onRemote } = await withBook()
     api.getBook.mockResolvedValue({ book: record({ version: 6, document: doc('newer') }) })

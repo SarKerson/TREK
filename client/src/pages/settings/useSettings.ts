@@ -1,3 +1,4 @@
+import { useRuntimeCapabilities } from '../../hooks/useRuntimeCapabilities'
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router'
 import { authApi } from '../../api/client'
@@ -12,6 +13,7 @@ import { useAuthStore } from '../../store/authStore'
  * Behaviour is identical to the previous in-component logic.
  */
 export function useSettings() {
+  const runtimeCapabilities = useRuntimeCapabilities()
   const [searchParams] = useSearchParams()
   const { isEnabled: addonEnabled, loadAddons } = useAddonStore()
   const managed = useAuthStore(s => s.managed)
@@ -43,8 +45,8 @@ export function useSettings() {
   // credentials actually live, instead of just naming the place.
   useEffect(() => {
     const tab = searchParams.get('tab')
-    if (tab) setActiveTab(tab)
-  }, [searchParams])
+    if (tab) setActiveTab(tab === 'plugins' && runtimeCapabilities?.persistentPlugins === false ? 'display' : tab)
+  }, [searchParams, runtimeCapabilities])
 
-  return { hasIntegrations, appVersion, activeTab, setActiveTab, managed }
+  return { runtimeCapabilities, hasIntegrations, appVersion, activeTab, setActiveTab, managed }
 }

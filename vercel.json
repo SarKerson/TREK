@@ -1,0 +1,80 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "buildCommand": "npm run build --workspace=shared && npm run typecheck --workspace=server && npm run build --workspace=server && npm run test:runtime --workspace=server && npm run build --workspace=client && node server/scripts/migrate-remote.mjs",
+  "outputDirectory": "client/dist",
+  "functions": {
+    "api/index.js": {
+      "maxDuration": 300,
+      "includeFiles": "{server/dist/**,node_modules/@libsql/**,server/node_modules/@libsql/**,node_modules/better-sqlite3/**/*.node,server/node_modules/better-sqlite3/**/*.node}"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/ws",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/uploads/:path*",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/mcp/:path*",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/oauth/:path*",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/.well-known/:path*",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/plugin-frame/:path*",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/:path*",
+      "destination": "/index.html"
+    }
+  ],
+  "regions": [
+    "hnd1"
+  ],
+  "headers": [
+    {
+      "source": "/:path*",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; img-src 'self' data: blob: https:; connect-src https://blob.vercel-storage.com 'self' ws: wss: https://nominatim.openstreetmap.org https://overpass-api.de https://places.googleapis.com https://api.openweathermap.org https://en.wikipedia.org https://commons.wikimedia.org https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://tile.openstreetmap.de https://tiles.stadiamaps.com https://server.arcgisonline.com https://*.is.autonavi.com https://unpkg.com https://open-meteo.com https://api.open-meteo.com https://geocoding-api.open-meteo.com https://api.frankfurter.dev https://router.project-osrm.org/route/v1/ https://routing.openstreetmap.de/ https://valhalla1.openstreetmap.de https://api.mapbox.com https://*.tiles.mapbox.com https://events.mapbox.com https://tiles.openfreemap.org; worker-src 'self' blob:; child-src 'self' blob:; media-src 'self' blob:; font-src 'self' https://fonts.gstatic.com data:; object-src 'self'; frame-src 'self'; frame-ancestors 'self'; form-action 'self'; base-uri 'self'; script-src-attr 'none'; upgrade-insecure-requests"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "SAMEORIGIN"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Strict-Transport-Security",
+          "value": "max-age=31536000"
+        },
+        {
+          "key": "Cross-Origin-Opener-Policy",
+          "value": "same-origin"
+        }
+      ]
+    }
+  ]
+}

@@ -13,10 +13,15 @@ import type { WebSocketServer } from 'ws';
 import { DatabaseService } from '../database/database.service';
 import { EphemeralTokenService } from '../auth/ephemeral-token.service';
 import { User } from '../../types';
+import { isVercelRuntime } from '../../runtime';
+import { SharedRealtimeRepository } from './shared-realtime.repository';
 import {
   bookPeers,
+  deliverSharedEvent,
+  setSharedTransport,
   broadcastToBook,
   joinBook,
+  isInBook,
   joinRoom,
   leaveAllBooks,
   leaveAllRooms,
@@ -54,6 +59,10 @@ const HEARTBEAT_INTERVAL = 30_000;
 export class RealtimeGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect, OnModuleDestroy
 {
+  private shared: SharedRealtimeRepository | null = null;
+  private server: WebSocketServer | null = null;
+  private sharedPoll: ReturnType<typeof setInterval> | null = null;
+  private readonly passwordVersions = new WeakMap<TrekWebSocket, number>();
   private heartbeat: ReturnType<typeof setInterval> | null = null;
 
   constructor(
@@ -68,10 +77,43 @@ export class RealtimeGateway
   ) {}
 
   afterInit(server: WebSocketServer): void {
+    this.server = server;
+    if (isVercelRuntime()) {
+      this.shared = new SharedRealtimeRepository(this.db);
+      const shared = this.shared;
+      setSharedTransport({
+        publish: event => shared.publish(event),
+        allowed: (socket, scope, targetId) => this.allowed(socket, scope, targetId),
+        latestSequence: () => shared.latestSequence(),
+        peers: journeyId => shared.peers(journeyId).filter(peer => !!this.journeys.canAccessJourney(journeyId, peer.userId)),
+        onlineUserIds: () => shared.onlineUserIds(),
+      });
+      this.sharedPoll = setInterval(() => {
+        if (server.clients.size === 0) return;
+        try {
+          shared.poll(deliverSharedEvent);
+          for (const journeyId of shared.cleanup()) this.announcePeers(journeyId);
+        } catch {
+          // Never silently skip a truncated/failed stream. Reconnect rehydrates REST.
+          this.resynchronize();
+        }
+      }, 2000);
+      this.sharedPoll.unref?.();
+    }
     this.heartbeat = setInterval(() => {
       server.clients.forEach((ws) => {
         const tws = ws as TrekWebSocket;
         if (tws.isAlive === false) return tws.terminate();
+        if (this.shared) {
+          try {
+            if (!this.sessionAllowed(tws)) return;
+            const sid = socketIdOf(tws);
+            if (sid != null) this.shared.renew(sid);
+          } catch {
+            tws.close(1012, 'Resynchronization required');
+            return;
+          }
+        }
         tws.isAlive = false;
         tws.ping();
       });
@@ -80,8 +122,46 @@ export class RealtimeGateway
   }
 
   onModuleDestroy(): void {
+    if (this.sharedPoll) clearInterval(this.sharedPoll);
+    this.sharedPoll = null;
+    setSharedTransport(null);
+    this.shared = null;
+    this.server = null;
     if (this.heartbeat) clearInterval(this.heartbeat);
     this.heartbeat = null;
+  }
+
+  /** A suspended instance has no right to replay an incomplete stream. */
+  private resynchronize(): void {
+    for (const socket of this.server?.clients ?? []) socket.close(1012, 'Resynchronization required');
+    // A failed database remains failed closed; the next upgrade will retry.
+    try { this.shared?.resetCursor(); } catch { /* all sockets are already closing */ }
+  }
+
+  private sessionAllowed(socket: TrekWebSocket): boolean {
+    const user = userOf(socket);
+    if (!user) return false;
+    const row = this.db.get<{ password_version: number; mfa_enabled: number }>(
+      'SELECT password_version, mfa_enabled FROM users WHERE id = ?', user.id,
+    );
+    if (!row || row.password_version !== this.passwordVersions.get(socket)) {
+      socket.close(4001, 'Session expired');
+      return false;
+    }
+    const requireMfa = this.db.get<{ value: string }>("SELECT value FROM app_settings WHERE key = 'require_mfa'")?.value === 'true';
+    if (requireMfa && !row.mfa_enabled) {
+      socket.close(4403, 'MFA required');
+      return false;
+    }
+    return true;
+  }
+
+  private allowed(socket: TrekWebSocket, scope: 'trip' | 'book' | 'user', targetId: number): boolean {
+    if (!this.sessionAllowed(socket)) return false;
+    const user = userOf(socket)!;
+    if (scope === 'trip') return !!this.db.canAccessTrip(targetId, user.id);
+    if (scope === 'book') return !!this.journeys.canAccessJourney(targetId, user.id);
+    return user.id === targetId;
   }
 
   /**
@@ -100,6 +180,17 @@ export class RealtimeGateway
       return;
     }
 
+    // Remote storage failures must reject the upgrade, never leave an admitted
+    // unauthenticated socket or an unhandled exception in the upgrade listener.
+    try {
+      this.authenticateConnection(socket, token);
+    } catch {
+      socket.close(1012, 'Resynchronization required');
+    }
+  }
+
+  private authenticateConnection(socket: TrekWebSocket, token: string): void {
+    if (this.shared && this.server && this.server.clients.size <= 1) this.shared.resetCursor();
     const consumed = this.tokens.consumeWithMeta(token, 'ws');
     if (!consumed) {
       socket.close(4001, 'Invalid or expired token');
@@ -136,17 +227,25 @@ export class RealtimeGateway
       return;
     }
 
+    this.passwordVersions.set(socket, currentPv);
     socket.isAlive = true;
     const sid = registerSocket(socket, user as User);
+    this.shared?.join(sid, user.id, currentPv, 'user', user.id);
     socket.send(JSON.stringify({ type: 'welcome', socketId: sid }));
     socket.on('pong', () => { socket.isAlive = true; });
   }
 
   handleDisconnect(socket: TrekWebSocket): void {
     leaveAllRooms(socket);
-    // Tell the books this socket was in, or its pointer stays on everyone
-    // else's page forever.
-    for (const journeyId of leaveAllBooks(socket)) this.announcePeers(journeyId);
+    const books = leaveAllBooks(socket);
+    try {
+      const sid = socketIdOf(socket);
+      if (sid != null) this.shared?.disconnect(sid);
+      for (const journeyId of books) this.announcePeers(journeyId);
+    } catch {
+      // The lease expires even if this instance dies before deleting it.
+      this.resynchronize();
+    }
   }
 
   @SubscribeMessage('join')
@@ -158,7 +257,8 @@ export class RealtimeGateway
     if (!user || !message?.tripId) return undefined;
 
     const tripId = Number(message.tripId);
-    if (!this.db.canAccessTrip(tripId, user.id)) {
+    if (!Number.isSafeInteger(tripId) || tripId <= 0 ||
+      (this.shared && !this.sessionAllowed(socket)) || !this.db.canAccessTrip(tripId, user.id)) {
       return { type: 'error', message: 'Access denied' };
     }
     joinRoom(socket, tripId);
@@ -182,11 +282,14 @@ export class RealtimeGateway
     if (!user || !message?.journeyId) return undefined;
 
     const journeyId = Number(message.journeyId);
-    if (!Number.isFinite(journeyId) || !this.journeys.canAccessJourney(journeyId, user.id)) {
+    if (!Number.isSafeInteger(journeyId) || journeyId <= 0 ||
+      (this.shared && !this.sessionAllowed(socket)) || !this.journeys.canAccessJourney(journeyId, user.id)) {
       return { type: 'error', message: 'Access denied' };
     }
 
     joinBook(socket, journeyId);
+    const sid = socketIdOf(socket);
+    if (sid != null) this.shared?.join(sid, user.id, this.passwordVersions.get(socket) ?? 0, 'book', journeyId);
     this.announcePeers(journeyId);
     return { type: 'book:joined', journeyId };
   }
@@ -199,6 +302,8 @@ export class RealtimeGateway
     if (!message?.journeyId) return undefined;
     const journeyId = Number(message.journeyId);
     leaveBook(socket, journeyId);
+    const sid = socketIdOf(socket);
+    if (sid != null) this.shared?.leaveBook(sid, journeyId);
     this.announcePeers(journeyId);
     return { type: 'book:left', journeyId };
   }
@@ -231,7 +336,8 @@ export class RealtimeGateway
     if (!user || sid == null || !message?.journeyId) return undefined;
 
     const journeyId = Number(message.journeyId);
-    if (!bookPeers(journeyId).some((p) => p.socketId === sid)) return undefined;
+    if (!isInBook(socket, journeyId)) return undefined;
+    if (this.shared && !this.allowed(socket, 'book', journeyId)) return undefined;
 
     broadcastToBook(
       journeyId,

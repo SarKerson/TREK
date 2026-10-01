@@ -8,6 +8,8 @@ import QRCode from 'qrcode';
 import { randomBytes, createHash } from 'crypto';
 import type { Request, Response } from 'express';
 import { readEnv } from '../../app-config';
+import { isVercelRuntime } from '../../runtime';
+import { SharedAuthStateRepository } from './shared-auth-state.repository';
 import { JWT_SECRET, SESSION_DURATION_SECONDS, SESSION_DURATION_REMEMBER_SECONDS } from '../../config';
 import { DatabaseService } from '../database/database.service';
 import { PermissionsService } from '../permissions/permissions.service';
@@ -55,8 +57,8 @@ import {
 authenticator.options = { window: 1 };
 
 const MFA_SETUP_TTL_MS = 15 * 60 * 1000;
-// Module-scoped on purpose: the bridge instance and the container singleton
-// must see the same pending-MFA state (permissions-cache precedent).
+// Local-only bridge/container state. Vercel uses the encrypted shared repository
+// so another worker can finish the setup without relying on this process.
 const mfaSetupPending = new Map<number, { secret: string; exp: number }>();
 
 // 60 min; long enough to read the email in a second tab, short enough
@@ -123,6 +125,8 @@ export interface ResetPasswordOutcome {
  */
 @Injectable()
 export class AuthService {
+  private readonly sharedState: SharedAuthStateRepository;
+
   constructor(
     private readonly db: DatabaseService,
     private readonly permissions: PermissionsService,
@@ -132,7 +136,9 @@ export class AuthService {
     private readonly mailer: MailerService,
     private readonly tokens: EphemeralTokenService,
     private readonly allowedFileTypes: AllowedFileTypesService,
-  ) {}
+  ) {
+    this.sharedState = new SharedAuthStateRepository(db);
+  }
 
   // Cookie
   setAuthCookie(res: Response, token: string, req: Request, remember?: boolean) { setAuthCookie(res, token, req, remember); }
@@ -168,9 +174,9 @@ export class AuthService {
     if (hasNewKeys) {
       const result = {
         password_login: get('password_login') !== 'false',
-        password_registration: get('password_registration') !== 'false',
+        password_registration: !isVercelRuntime() && get('password_registration') !== 'false',
         oidc_login: get('oidc_login') !== 'false',
-        oidc_registration: get('oidc_registration') !== 'false',
+        oidc_registration: !isVercelRuntime() && get('oidc_registration') !== 'false',
         passkey_login,
       };
       if (readEnv().oidc.only) {
@@ -187,7 +193,9 @@ export class AuthService {
       (readEnv().oidc.clientId || get('oidc_client_id'))
     );
     const oidcOnly = oidcOnlyEnabled && oidcConfigured;
-    const allowReg = (get('allow_registration') ?? 'true') === 'true';
+    // This Vercel deployment is private: only an administrator's invite permits
+    // new accounts. Persisted settings cannot turn public registration back on.
+    const allowReg = !isVercelRuntime() && (get('allow_registration') ?? 'true') === 'true';
 
     return {
       password_login: !oidcOnly,
@@ -221,6 +229,7 @@ export class AuthService {
   }
 
   getPendingMfaSecret(userId: number): string | null {
+    if (isVercelRuntime()) return this.sharedState.read<string>('mfa-setup', String(userId))?.value ?? null;
     const row = mfaSetupPending.get(userId);
     if (!row || Date.now() > row.exp) {
       mfaSetupPending.delete(userId);
@@ -395,7 +404,9 @@ export class AuthService {
       if (validInvite.expires_at && new Date(validInvite.expires_at) < new Date()) return { error: 'Invite link has expired', status: 410 };
     }
 
-    if (userCount > 0 && !validInvite) {
+    // Secure bootstrap provisions the first Vercel admin; never expose a public
+    // first-user takeover path even if the database is temporarily empty.
+    if ((isVercelRuntime() || userCount > 0) && !validInvite) {
       const toggles = this.resolveAuthToggles();
       if (!toggles.password_registration) {
         return { error: 'Password registration is disabled. Contact your administrator.', status: 403 };
@@ -422,6 +433,7 @@ export class AuthService {
     const password_hash = bcrypt.hashSync(password, BCRYPT_COST);
     const isFirstUser = userCount === 0;
     const role = isFirstUser ? 'admin' : 'user';
+    const inviteRaceError = new Error('invite_exhausted');
 
     try {
       // One transaction for the whole signup: a mid-sequence throw (invite
@@ -437,10 +449,14 @@ export class AuthService {
 
         if (validInvite) {
           const updated = this.db.get(
-            'UPDATE invite_tokens SET used_count = used_count + 1 WHERE id = ? AND (max_uses = 0 OR used_count < max_uses) RETURNING used_count',
+            isVercelRuntime()
+              ? `UPDATE invite_tokens SET used_count = used_count + 1 WHERE id = ? AND (max_uses = 0 OR used_count < max_uses)
+                  AND (expires_at IS NULL OR julianday(expires_at) > julianday('now')) RETURNING used_count`
+              : 'UPDATE invite_tokens SET used_count = used_count + 1 WHERE id = ? AND (max_uses = 0 OR used_count < max_uses) RETURNING used_count',
             validInvite.id
           );
           if (!updated) {
+            if (isVercelRuntime()) throw inviteRaceError;
             console.warn(`[Auth] Invite token ${validInvite.token.slice(0, 8)}... exceeded max_uses due to race condition`);
           }
           // Trip-bound invite (#1402): auto-add the freshly registered user to the
@@ -457,7 +473,8 @@ export class AuthService {
           auditDetails: { username, email, role },
         };
       });
-    } catch {
+    } catch (err) {
+      if (err === inviteRaceError) return { error: 'Invite link is no longer available', status: 410 };
       return { error: 'Error creating user', status: 500 };
     }
   }
@@ -646,6 +663,11 @@ export class AuthService {
       const row = this.db.get<{ value: string }>("SELECT value FROM app_settings WHERE key = ?", key);
       if (row) result[key] = (key === 'smtp_pass' || key === 'admin_webhook_url' || key === 'admin_ntfy_token') ? '••••••••' : row.value;
     }
+    if (isVercelRuntime()) {
+      result.allow_registration = 'false';
+      result.password_registration = 'false';
+      result.oidc_registration = 'false';
+    }
     return { data: result };
   }
 
@@ -703,6 +725,7 @@ export class AuthService {
       if (blocked.includes(key)) continue;
       if (body[key] !== undefined) {
         let val = String(body[key]);
+        if (isVercelRuntime() && ['allow_registration', 'password_registration', 'oidc_registration'].includes(key)) val = 'false';
         if (key === 'require_mfa') {
           val = body[key] === true || val === 'true' ? 'true' : 'false';
         }
@@ -757,7 +780,8 @@ export class AuthService {
     let secret: string, otpauth_url: string;
     try {
       secret = authenticator.generateSecret();
-      mfaSetupPending.set(userId, { secret, exp: Date.now() + MFA_SETUP_TTL_MS });
+      if (isVercelRuntime()) this.sharedState.put('mfa-setup', String(userId), secret, Date.now() + MFA_SETUP_TTL_MS);
+      else mfaSetupPending.set(userId, { secret, exp: Date.now() + MFA_SETUP_TTL_MS });
       otpauth_url = authenticator.keyuri(userEmail, 'TREK', secret);
     } catch (err) {
       console.error('[MFA] Setup error:', err);
@@ -771,7 +795,8 @@ export class AuthService {
     if (!code) {
       return { error: 'Verification code is required', status: 400 };
     }
-    const pending = this.getPendingMfaSecret(userId);
+    const sharedPending = isVercelRuntime() ? this.sharedState.read<string>('mfa-setup', String(userId)) : null;
+    const pending = isVercelRuntime() ? sharedPending?.value : this.getPendingMfaSecret(userId);
     if (!pending) {
       return { error: 'No MFA setup in progress. Start the setup again.', status: 400 };
     }
@@ -783,12 +808,20 @@ export class AuthService {
     const backupCodes = generateBackupCodes();
     const backupHashes = backupCodes.map(hashBackupCodeBcrypt);
     const enc = encryptMfaSecret(pending);
-    this.db.run('UPDATE users SET mfa_enabled = 1, mfa_secret = ?, mfa_backup_codes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-      enc,
-      JSON.stringify(backupHashes),
-      userId
-    );
-    mfaSetupPending.delete(userId);
+    if (isVercelRuntime()) {
+      // The CAS takes the write lock first; a different worker cannot enable or
+      // replace this setup between its consumption and the conditional user write.
+      const enabled = this.db.transaction(() => {
+        if (!sharedPending || !this.sharedState.compareAndDelete('mfa-setup', String(userId), sharedPending.revision)) return false;
+        return this.db.run(`UPDATE users SET mfa_enabled = 1, mfa_secret = ?, mfa_backup_codes = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ? AND COALESCE(mfa_enabled, 0) = 0`, enc, JSON.stringify(backupHashes), userId).changes === 1;
+      });
+      if (!enabled) return { error: 'No MFA setup in progress. Start the setup again.', status: 400 };
+    } else {
+      this.db.run('UPDATE users SET mfa_enabled = 1, mfa_secret = ?, mfa_backup_codes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        enc, JSON.stringify(backupHashes), userId);
+      mfaSetupPending.delete(userId);
+    }
     return { success: true, mfa_enabled: true, backup_codes: backupCodes };
   }
 
@@ -825,7 +858,8 @@ export class AuthService {
     this.db.run('UPDATE users SET mfa_enabled = 0, mfa_secret = NULL, mfa_backup_codes = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
       userId
     );
-    mfaSetupPending.delete(userId);
+    if (isVercelRuntime()) this.sharedState.delete('mfa-setup', String(userId));
+    else mfaSetupPending.delete(userId);
     return { success: true, mfa_enabled: false };
   }
 
@@ -911,15 +945,21 @@ export class AuthService {
     // is identical regardless of whether the account exists.
     const throttleKey = email || '__noemail__';
     const now = Date.now();
-    const record = perEmailResetAttempts.get(throttleKey);
-    if (record && record.count >= PASSWORD_RESET_PER_EMAIL_MAX && now - record.first < PASSWORD_RESET_PER_EMAIL_WINDOW_MS) {
-      return { tokenForDelivery: null, userId: null, userEmail: null, reason: 'throttled_per_email' };
-    }
-    if (!record || now - record.first >= PASSWORD_RESET_PER_EMAIL_WINDOW_MS) {
-      perEmailResetAttempts.set(throttleKey, { count: 1, first: now });
+    let allowed: boolean;
+    if (isVercelRuntime()) {
+      allowed = this.sharedState.checkRateLimit('password-reset-email', throttleKey, PASSWORD_RESET_PER_EMAIL_MAX, PASSWORD_RESET_PER_EMAIL_WINDOW_MS, now);
     } else {
-      record.count++;
+      const record = perEmailResetAttempts.get(throttleKey);
+      allowed = !(record && record.count >= PASSWORD_RESET_PER_EMAIL_MAX && now - record.first < PASSWORD_RESET_PER_EMAIL_WINDOW_MS);
+      if (allowed) {
+        if (!record || now - record.first >= PASSWORD_RESET_PER_EMAIL_WINDOW_MS) {
+          perEmailResetAttempts.set(throttleKey, { count: 1, first: now });
+        } else {
+          record.count++;
+        }
+      }
     }
+    if (!allowed) return { tokenForDelivery: null, userId: null, userEmail: null, reason: 'throttled_per_email' };
 
     if (!looksLikeEmail) {
       return { tokenForDelivery: null, userId: null, userEmail: null, reason: 'no_user' };

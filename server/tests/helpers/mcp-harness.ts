@@ -10,9 +10,9 @@
  *   await harness.cleanup();
  */
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
-import { Client } from '@modelcontextprotocol/sdk/client/index';
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { registerTools } from '../../src/mcp/tools';
 import type { McpAttachOptions } from '../../src/nest-mcp';
 import { createMcpTestRegistry } from './mcp-test-controllers';

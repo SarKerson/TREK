@@ -75,7 +75,7 @@ describe('openDatabase', () => {
 
   it('is what the server opens its main database with', async () => {
     const { db } = await import('../../../src/db/database');
-    expect(db.pragma('temp_store', { simple: true })).toBe(MEMORY);
+    expect(db.prepare('PRAGMA temp_store').get()).toEqual({ temp_store: MEMORY });
   });
 });
 

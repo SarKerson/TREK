@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { isVercelRuntime } from '../../runtime';
 import { DatabaseService } from '../database/database.service';
 import { logError } from '../audit/audit-log.logger';
 import {
@@ -99,6 +100,9 @@ export class PermissionsService {
       // real DB failure that must not stay invisible (we still serve defaults).
       const msg = e instanceof Error ? e.message : String(e);
       if (!msg.includes('no such table')) logError(`Permissions load failed: ${msg}`);
+      // A remote outage must never replace restrictive stored permissions with
+      // permissive defaults. Local first-boot compatibility remains unchanged.
+      if (isVercelRuntime()) throw e;
       // Serve defaults for THIS call, but do not install them: a half-built
       // cache would freeze every later reader on the defaults until somebody
       // invalidates by hand, which is how a stricter admin setting silently

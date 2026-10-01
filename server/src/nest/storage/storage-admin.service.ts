@@ -50,7 +50,7 @@ export class StorageAdminService {
         name: backend.name,
         type: backend.type,
         source: backend.source,
-        options: maskBackendOptions(backend.type, backend.options),
+        options: backend.type === 'vercel-blob' ? {} : maskBackendOptions(backend.type, backend.options),
         categories: assignments.filter(([, a]) => a.backend === backend.name).map(([category]) => category),
       })),
       categories: snapshot.categories,

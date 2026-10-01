@@ -1,3 +1,4 @@
+import { isVercelRuntime } from '../../runtime';
 import {
   Controller,
   Post,
@@ -156,7 +157,9 @@ export class ReservationImportController {
     @Body() body: BookingImportPreviewDto,
   ): Promise<{ jobId: string }> {
     const mode = this.validateImport(tripId, user, files, body?.mode);
-    const jobId = this.importJobs.start(tripId, files!, mode, user.id);
+    const jobId = isVercelRuntime()
+      ? await this.importJobs.startInRequest(tripId, files!, mode, user.id)
+      : this.importJobs.start(tripId, files!, mode, user.id);
     return { jobId };
   }
 
@@ -166,9 +169,9 @@ export class ReservationImportController {
    * WebSocket push (navigation, reconnect). 404 once the job has expired.
    */
   @Get('jobs/:jobId')
-  async jobStatus(@CurrentUser() user: User, @Param('jobId') jobId: string) {
+  async jobStatus(@CurrentUser() user: User, @Param('jobId') jobId: string, @Param('tripId') tripId: string) {
     const job = this.importJobs.get(jobId, user.id);
-    if (!job) throw new HttpException({ error: 'Job not found' }, 404);
+    if (!job || job.tripId !== tripId) throw new HttpException({ error: 'Job not found' }, 404);
     return { status: job.status, done: job.done, total: job.total, result: job.result, error: job.error };
   }
 

@@ -1,3 +1,4 @@
+import { isVercelRuntime } from '../../runtime';
 import {
   Body,
   Controller,
@@ -125,6 +126,10 @@ export class BackupController {
   @HttpCode(200) // Express answers upload-restore with res.json (200).
   @UseInterceptors(FileInterceptor('backup'))
   async uploadRestore(@CurrentUser() user: User, @UploadedFile() file: Express.Multer.File | undefined, @Req() req: Request) {
+    if (isVercelRuntime()) {
+      if (file?.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
+      throw new HttpException({ error: 'Full-instance backup and restore is unavailable on this serverless deployment' }, 503);
+    }
     // Checked here rather than in the guard: a guard runs before the multipart
     // parser, so throwing there leaves the body unread and the client sees an
     // ECONNRESET instead of this 403 (PROFILE-015). The marker above still puts

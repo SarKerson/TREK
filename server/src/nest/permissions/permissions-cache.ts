@@ -1,4 +1,5 @@
 import type { PermissionLevel } from './permissions.service';
+import { isVercelRuntime } from '../../runtime';
 
 /**
  * The permissions cache — module state on purpose, in its own home (the
@@ -13,12 +14,14 @@ import type { PermissionLevel } from './permissions.service';
 let cache: Map<string, PermissionLevel> | null = null;
 
 export function getPermissionsCache(): Map<string, PermissionLevel> | null {
-  return cache;
+  // Another worker may have revoked permissions; no process-local snapshot is
+  // authoritative in the shared Vercel deployment.
+  return isVercelRuntime() ? null : cache;
 }
 
 /** Install a fresh cache map and return it (the loader fills it in place). */
 export function setPermissionsCache(next: Map<string, PermissionLevel>): Map<string, PermissionLevel> {
-  cache = next;
+  if (!isVercelRuntime()) cache = next;
   return next;
 }
 

@@ -15,6 +15,8 @@ import { StorageModule } from '../storage/storage.module';
 import { StorageService } from '../storage/storage.service';
 import { buildStorageUploadOptions } from '../storage/storage-upload.factory';
 import { journeyImageFileFilter, journeyUploadFilename } from './journey.controller';
+import { JourneyDirectUploadsController } from './journey-direct-uploads.controller';
+import { JourneyDirectUploadsService } from './journey-direct-uploads.service';
 
 @Module({
   // MemoriesModule: the journey gallery streams provider assets and uploads to Immich.
@@ -33,8 +35,9 @@ import { journeyImageFileFilter, journeyUploadFilename } from './journey.control
         }),
     }),
     StorageModule,
+    AllowedFileTypesModule,
     AuthModule, AddonsModule, MemoriesModule, JourneyDomainModule],
-  controllers: [JourneyController, JourneyPublicController],
-  providers: [JourneyService, JourneyBookService, JourneyMcp],
+  controllers: [JourneyDirectUploadsController, JourneyController, JourneyPublicController],
+  providers: [JourneyService, JourneyBookService, JourneyMcp, JourneyDirectUploadsService],
 })
 export class JourneyModule {}

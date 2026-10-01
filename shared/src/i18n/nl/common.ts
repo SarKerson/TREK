@@ -1,6 +1,8 @@
 import type { TranslationStrings } from '../types';
 
 const common: TranslationStrings = {
+  'common.serverlessLimitations':
+    'Deze serverloze installatie biedt geen permanente plugins, automatische achtergrondsynchronisatie, volledige back-up of herstel van de installatie, of MCP. Reisplanning en handmatige synchronisatie blijven beschikbaar.',
   'common.save': 'Opslaan',
   'common.showMore': 'Meer tonen',
   'common.showLess': 'Minder tonen',

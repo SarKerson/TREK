@@ -1,3 +1,4 @@
+import { serverFeaturesSchema, type ServerFeatures } from '@trek/shared'
 import { isEffectivelyOffline } from '../sync/networkMode'
 import axios, { AxiosInstance } from 'axios'
 import type { z } from 'zod'
@@ -74,6 +75,7 @@ import {
 import { getSocketId } from './websocket'
 import { probeNow } from '../sync/connectivity'
 import { downloadBlob } from '../utils/fileDownload'
+import { UploadTransport } from './uploadTransport'
 
 /**
  * Validate a response payload against its @trek/shared Zod schema — but only in
@@ -298,16 +300,10 @@ export interface UploadOptions {
   signal?: AbortSignal
 }
 
+const uploadTransport = new UploadTransport(apiClient)
+
 export function postMultipart<T = any>(url: string, formData: FormData, opts?: UploadOptions): Promise<T> {
-  return apiClient.post(url, formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-      ...(opts?.idempotencyKey ? { 'X-Idempotency-Key': opts.idempotencyKey } : {}),
-    },
-    timeout: 0,
-    onUploadProgress: opts?.onUploadProgress,
-    signal: opts?.signal,
-  }).then(r => r.data as T)
+  return uploadTransport.multipart<T>(url, formData, opts)
 }
 
 export const authApi = {
@@ -1368,7 +1364,7 @@ export const budgetApi = {
 
 export const filesApi = {
   list: (tripId: number | string, trash?: boolean) => apiClient.get(`/trips/${tripId}/files`, { params: trash ? { trash: 'true' } : {} }).then(r => r.data),
-  upload: (tripId: number | string, formData: FormData, opts?: UploadOptions) => postMultipart(`/trips/${tripId}/files`, formData, opts),
+  upload: (tripId: number | string, formData: FormData, opts?: UploadOptions) => uploadTransport.tripFile(tripId, formData, opts),
   update: (tripId: number | string, id: number, data: FileUpdateRequest) => apiClient.put(`/trips/${tripId}/files/${id}`, data).then(r => r.data),
   delete: (tripId: number | string, id: number) => apiClient.delete(`/trips/${tripId}/files/${id}`).then(r => r.data),
   toggleStar: (tripId: number | string, id: number) => apiClient.patch(`/trips/${tripId}/files/${id}/star`).then(r => r.data),
@@ -1471,7 +1467,7 @@ export const reservationsApi = {
 }
 
 export const healthApi = {
-  features: (): Promise<{ bookingImport: boolean; aiParsing: boolean }> => apiClient.get('/health/features').then(r => r.data),
+  features: (): Promise<ServerFeatures> => apiClient.get('/health/features').then(r => serverFeaturesSchema.parse(r.data)),
 }
 
 export const weatherApi = {

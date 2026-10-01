@@ -1,4 +1,15 @@
 import crypto from 'crypto';
+import type { DatabaseService } from '../database/database.service';
+import { isVercelRuntime } from '../../runtime';
+
+let sharedDb: DatabaseService | undefined;
+export function configureEphemeralTokenDatabase(db: DatabaseService): void { sharedDb = db; }
+function remoteDb(): DatabaseService | undefined {
+  if (!isVercelRuntime()) return undefined;
+  if (!sharedDb) throw new Error('Shared token database is not initialized');
+  return sharedDb;
+}
+const tokenHash = (token: string) => crypto.createHash('sha256').update(token).digest('hex');
 
 const TTL: Record<string, number> = {
   ws: 30_000,
@@ -32,6 +43,16 @@ export function createEphemeralToken(
   purpose: string,
   meta?: EphemeralTokenMeta,
 ): string | null {
+  const db = remoteDb();
+  if (db) {
+    db.run('DELETE FROM ephemeral_tokens WHERE expires_at <= ?', Date.now());
+    const token = crypto.randomBytes(32).toString('hex');
+    const result = db.run(
+      'INSERT INTO ephemeral_tokens (token_hash, user_id, purpose, expires_at, pv) SELECT ?, ?, ?, ?, ? WHERE (SELECT COUNT(*) FROM ephemeral_tokens) < ?',
+      tokenHash(token), userId, purpose, Date.now() + (TTL[purpose] ?? 60_000), meta?.pv ?? null, MAX_STORE_SIZE,
+    );
+    return result.changes ? token : null;
+  }
   if (store.size >= MAX_STORE_SIZE) return null;
   const token = crypto.randomBytes(32).toString('hex');
   const ttl = TTL[purpose] ?? 60_000;
@@ -40,11 +61,7 @@ export function createEphemeralToken(
 }
 
 export function consumeEphemeralToken(token: string, purpose: string): number | null {
-  const entry = store.get(token);
-  if (!entry) return null;
-  store.delete(token);
-  if (entry.purpose !== purpose || Date.now() > entry.expiresAt) return null;
-  return entry.userId;
+  return consumeEphemeralTokenWithMeta(token, purpose)?.userId ?? null;
 }
 
 /**
@@ -56,6 +73,15 @@ export function consumeEphemeralTokenWithMeta(
   token: string,
   purpose: string,
 ): { userId: number; pv?: number } | null {
+  const db = remoteDb();
+  if (db) {
+    // One statement is the compare-and-delete: two instances cannot redeem it.
+    const row = db.get<{ user_id: number; purpose: string; expires_at: number; pv: number | null }>(
+      'DELETE FROM ephemeral_tokens WHERE token_hash = ? RETURNING user_id, purpose, expires_at, pv', tokenHash(token),
+    );
+    if (!row || row.purpose !== purpose || Date.now() >= row.expires_at) return null;
+    return { userId: row.user_id, pv: row.pv ?? undefined };
+  }
   const entry = store.get(token);
   if (!entry) return null;
   store.delete(token);
@@ -66,7 +92,7 @@ export function consumeEphemeralTokenWithMeta(
 let cleanupInterval: ReturnType<typeof setInterval> | null = null;
 
 export function startTokenCleanup(): void {
-  if (cleanupInterval) return;
+  if (isVercelRuntime() || cleanupInterval) return;
   cleanupInterval = setInterval(() => {
     const now = Date.now();
     for (const [token, entry] of store) {

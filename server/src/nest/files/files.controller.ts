@@ -29,7 +29,8 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { TripAccessGuard } from '../permissions/trip-access.guard';
 import type { TripAccess } from '../database/database.service';
 import { Trip } from '../permissions/trip.decorator';
-import { MAX_FILE_SIZE, BLOCKED_EXTENSIONS, isVideoExtension } from './files.constants';
+import { MAX_FILE_SIZE, isVideoExtension } from './files.constants';
+import { isAllowedFileType } from './files-upload-policy';
 import { FileUploadDto, FileUpdateDto, FileLinkDto } from './files.dto';
 import { AllowedFileTypesService } from './allowed-file-types.service';
 
@@ -44,18 +45,13 @@ import { AllowedFileTypesService } from './allowed-file-types.service';
  */
 export function filesUploadFileFilter(allowedTypes: AllowedFileTypesService): Options['fileFilter'] {
   return (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
     const reject = () => {
       // i18n key — the client resolves it via t() (see translateApiError).
       const err: Error & { statusCode?: number } = new Error('files.uploadErrorType');
       err.statusCode = 400;
       cb(err);
     };
-    if (BLOCKED_EXTENSIONS.includes(ext) || file.mimetype.includes('svg')) return reject();
-    const allowed = allowedTypes.get().split(',').map((e) => e.trim().toLowerCase());
-    const fileExt = ext.replace('.', '');
-    // Video is accepted as media regardless of the admin doc-types allowlist (#823).
-    if (allowed.includes(fileExt) || isVideoExtension(fileExt) || (allowed.includes('*') && !BLOCKED_EXTENSIONS.includes(ext))) return cb(null, true);
+    if (isAllowedFileType(file.originalname, file.mimetype, allowedTypes.get())) return cb(null, true);
     reject();
   };
 }

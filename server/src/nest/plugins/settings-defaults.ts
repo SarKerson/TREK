@@ -1,4 +1,4 @@
-import type BetterSqlite3 from 'better-sqlite3';
+import type { DbConnection } from '../../db/adapter';
 
 /** What a settings-field `default` may be — the JSON scalars the manifest accepts. */
 export type SettingDefault = string | number | boolean;
@@ -32,7 +32,7 @@ export function parseDefaultValue(raw: unknown): SettingDefault | undefined {
 /** The declared defaults for one plugin and scope, keyed by field. Null-prototype so a
  *  field key can never resolve off Object.prototype (see plugin-config-parse.ts). */
 export function settingDefaults(
-  db: BetterSqlite3.Database,
+  db: DbConnection,
   pluginId: string,
   scope: 'instance' | 'user',
 ): Record<string, SettingDefault> {

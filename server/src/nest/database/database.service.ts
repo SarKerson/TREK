@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import type { DbConnection, DbStatement } from '../../db/adapter';
 import type Database from 'better-sqlite3';
 import { canAccessTrip, getPlaceWithTags, isOwner } from '../../db/database';
 import type { PlaceWithTags, TripAccess } from '../../db/database';
@@ -7,22 +8,22 @@ import { DATABASE_CONNECTION } from './database.tokens';
 export type { PlaceWithTags, TripAccess };
 
 /**
- * Injectable wrapper around TREK's existing better-sqlite3 connection.
+ * Injectable wrapper around TREK's synchronous SQL connection.
  *
  * The injected connection is the Proxy onto the singleton the legacy app
- * already uses (WAL enabled), so Nest modules share the exact same
- * connection — no second connection, no split state, single writer preserved.
+ * already uses, so Nest modules share the exact same connection. Local SQLite
+ * uses WAL; serverless instances connect directly to the durable remote database.
  */
 @Injectable()
 export class DatabaseService {
-  constructor(@Inject(DATABASE_CONNECTION) private readonly conn: Database.Database) {}
+  constructor(@Inject(DATABASE_CONNECTION) private readonly conn: DbConnection) {}
 
-  /** The shared better-sqlite3 connection (same singleton the legacy app uses). */
-  get connection(): Database.Database {
+  /** The shared local SQLite or direct remote libsql connection. */
+  get connection(): DbConnection {
     return this.conn;
   }
 
-  prepare(sql: string): Database.Statement {
+  prepare(sql: string): DbStatement {
     return this.conn.prepare(sql);
   }
 
@@ -38,8 +39,8 @@ export class DatabaseService {
     return this.conn.prepare(sql).run(...params);
   }
 
-  /** Run `fn` inside a synchronous better-sqlite3 transaction. */
-  transaction<T>(fn: (conn: Database.Database) => T): T {
+  /** Run `fn` inside a synchronous SQL transaction. */
+  transaction<T>(fn: (conn: DbConnection) => T): T {
     return this.conn.transaction(() => fn(this.conn))();
   }
 

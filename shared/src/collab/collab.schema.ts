@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { stagedUploadFilesSchema } from '../file/file.schema';
 
 /**
  * Collab API contract — single source of truth for the /api/trips/:tripId/collab
@@ -76,6 +77,15 @@ export const collabMessageCreateRequestSchema = z.object({
   reply_to: z.union([z.number(), z.string(), z.null()]).optional(),
 });
 export type CollabMessageCreateRequest = z.infer<typeof collabMessageCreateRequestSchema>;
+
+export const collabNoteDirectUploadSchema = z.object({
+  files: stagedUploadFilesSchema.length(1), metadata: z.object({}).strict(),
+}).strict();
+export const collabMessageDirectUploadSchema = z.object({
+  files: stagedUploadFilesSchema.max(4), metadata: collabMessageCreateRequestSchema,
+}).strict();
+export type CollabNoteDirectUpload = z.infer<typeof collabNoteDirectUploadSchema>;
+export type CollabMessageDirectUpload = z.infer<typeof collabMessageDirectUploadSchema>;
 
 export const collabReactionRequestSchema = z.object({
   emoji: z.string().min(1),

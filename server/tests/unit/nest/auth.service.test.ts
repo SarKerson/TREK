@@ -1061,3 +1061,136 @@ describe('generateToken remember claim (#1927)', () => {
     expect(decoded.exp - decoded.iat).toBe(86400);
   });
 });
+
+// Vercel workers share encrypted setup state and throttle counters in the DB.
+describe('Vercel shared MFA and password-reset state', () => {
+  function otherWorker(): AuthService {
+    const db = new DatabaseService(testDb);
+    return new AuthService(db, new PermissionsService(db), membershipStub, new WebauthnConfigService(db),
+      new UserCleanupService(db, new BudgetService(db, new PermissionsService(db), new ExchangeRatesService(), new RealtimeService())),
+      mailerStub, new EphemeralTokenService(), new AllowedFileTypesService(db));
+  }
+
+  beforeEach(() => {
+    vi.stubEnv('VERCEL', '1');
+    testDb.exec('DELETE FROM auth_ephemeral_state; DELETE FROM auth_rate_limits;');
+  });
+
+  afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
+
+  it('shares MFA setup across workers, persists ciphertext, and consumes only once', async () => {
+    const { user, password } = createUser(testDb);
+    const setup = svc.setupMfa(user.id, user.email);
+    await setup.qrPromise;
+    const other = otherWorker();
+    expect(other.getPendingMfaSecret(user.id)).toBe(setup.secret);
+    expect(JSON.stringify(testDb.prepare('SELECT * FROM auth_ephemeral_state').all())).not.toContain(setup.secret);
+    const code = authenticator.generate(setup.secret!);
+    expect(other.enableMfa(user.id, code).success).toBe(true);
+    expect(svc.enableMfa(user.id, code).status).toBe(400);
+    expect(svc.getPendingMfaSecret(user.id)).toBeNull();
+    expect(other.disableMfa(user.id, user.email, { password, code }).success).toBe(true);
+  });
+
+  it('rejects a setup expired at the TTL boundary and keeps unexpired setup on a bad code', async () => {
+    const { user } = createUser(testDb);
+    const now = Date.now();
+    vi.spyOn(Date, 'now').mockReturnValue(now);
+    const setup = svc.setupMfa(user.id, user.email);
+    await setup.qrPromise;
+    vi.spyOn(authenticator, 'verify').mockReturnValue(false);
+    expect(svc.enableMfa(user.id, '000000').status).toBe(401);
+    expect(otherWorker().getPendingMfaSecret(user.id)).toBe(setup.secret);
+    vi.mocked(Date.now).mockReturnValue(now + 15 * 60 * 1000);
+    expect(otherWorker().getPendingMfaSecret(user.id)).toBeNull();
+    expect(svc.enableMfa(user.id, '000000').status).toBe(400);
+  });
+
+  it('does not overwrite an MFA setup enabled by another worker during verification', async () => {
+    const { user } = createUser(testDb);
+    const setup = svc.setupMfa(user.id, user.email);
+    await setup.qrPromise;
+    const other = otherWorker();
+    const verify = authenticator.verify.bind(authenticator);
+    let winningCodes: string[] | undefined;
+    vi.spyOn(authenticator, 'verify').mockImplementationOnce(options => {
+      const result = other.enableMfa(user.id, options.token);
+      expect(result.success).toBe(true);
+      winningCodes = result.backup_codes;
+      return verify(options);
+    });
+    const loser = svc.enableMfa(user.id, authenticator.generate(setup.secret!));
+    expect(loser.status).toBe(400);
+    expect(loser.backup_codes).toBeUndefined();
+    expect(winningCodes).toHaveLength(10);
+  });
+
+  it('shares the normalized per-email cap across workers, including nonexistent accounts', () => {
+    const other = otherWorker();
+    const now = Date.now();
+    vi.spyOn(Date, 'now').mockReturnValue(now);
+    expect(svc.requestPasswordReset('missing@example.com', null).reason).toBe('no_user');
+    expect(other.requestPasswordReset(' MISSING@example.com ', null).reason).toBe('no_user');
+    expect(svc.requestPasswordReset('missing@example.com', null).reason).toBe('no_user');
+    expect(other.requestPasswordReset('missing@example.com', null).reason).toBe('throttled_per_email');
+    expect(JSON.stringify(testDb.prepare('SELECT * FROM auth_rate_limits').all())).not.toContain('missing@example.com');
+    vi.mocked(Date.now).mockReturnValue(now + 15 * 60 * 1000);
+    expect(other.requestPasswordReset('missing@example.com', null).reason).toBe('no_user');
+  });
+});
+
+describe('Vercel private-family registration policy', () => {
+  const applicant = { username: 'invited-family', email: 'family@example.com', password: 'FamilyPassword123!' };
+
+  beforeEach(() => vi.stubEnv('VERCEL', '1'));
+  afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
+
+  it('disables public password and OIDC registration with defaults, legacy and granular settings', () => {
+    expect(svc.resolveAuthToggles()).toMatchObject({ password_registration: false, oidc_registration: false, password_login: true });
+    testDb.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('allow_registration', 'true')").run();
+    expect(svc.resolveAuthToggles()).toMatchObject({ password_registration: false, oidc_registration: false });
+    for (const key of ['password_registration', 'oidc_registration']) {
+      testDb.prepare('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)').run(key, 'true');
+    }
+    expect(svc.resolveAuthToggles()).toMatchObject({ password_registration: false, oidc_registration: false });
+    expect(svc.getAppConfig(null)).toMatchObject({ allow_registration: false, password_registration: false, oidc_registration: false });
+  });
+
+  it('rejects anonymous signup both before and after secure admin bootstrap', () => {
+    expect(svc.registerUser(applicant).status).toBe(403);
+    expect(testDb.prepare('SELECT id FROM users').get()).toBeUndefined();
+    createAdmin(testDb);
+    expect(svc.registerUser(applicant).status).toBe(403);
+    expect(testDb.prepare('SELECT id FROM users WHERE email = ?').get(applicant.email)).toBeUndefined();
+  });
+
+  it('accepts a valid administrator invite exactly once despite disabled public signup', () => {
+    const { user: admin } = createAdmin(testDb);
+    const invite = createInviteToken(testDb, { created_by: admin.id, max_uses: 1 });
+    const result = svc.registerUser({ ...applicant, invite_token: invite.token });
+    expect(result.token).toBeDefined();
+    expect(result.user).toMatchObject({ email: applicant.email, role: 'user' });
+    expect(svc.registerUser({ ...applicant, username: 'another', email: 'another@example.com', invite_token: invite.token }).status).toBe(410);
+  });
+
+  it('cannot re-enable public signup through administrator settings', () => {
+    const { user: admin } = createAdmin(testDb);
+    expect(svc.updateAppSettings(admin.id, { allow_registration: true, password_registration: true, oidc_registration: true }).success).toBe(true);
+    expect(svc.getAppSettings(admin.id).data).toMatchObject({ allow_registration: 'false', password_registration: 'false', oidc_registration: 'false' });
+    expect(svc.resolveAuthToggles()).toMatchObject({ password_registration: false, oidc_registration: false });
+    expect(svc.registerUser(applicant).status).toBe(403);
+  });
+
+  it('rolls back registration if a competing request consumes the invite after validation', () => {
+    const { user: admin } = createAdmin(testDb);
+    const invite = createInviteToken(testDb, { created_by: admin.id, max_uses: 1 });
+    // Model lost capacity after the early SELECT, before the atomic invite increment.
+    const original = svc.generateToken.bind(svc);
+    vi.spyOn(svc, 'generateToken').mockImplementationOnce((user, remember) => {
+      testDb.prepare('UPDATE invite_tokens SET used_count = max_uses WHERE id = ?').run(invite.id);
+      return original(user, remember);
+    });
+    expect(svc.registerUser({ ...applicant, invite_token: invite.token }).status).toBe(410);
+    expect(testDb.prepare('SELECT id FROM users WHERE email = ?').get(applicant.email)).toBeUndefined();
+  });
+});

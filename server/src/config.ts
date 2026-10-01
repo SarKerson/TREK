@@ -2,6 +2,9 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { readEnv } from './app-config';
+import { vercelSecrets, isVercelRuntime } from './runtime';
+
+const runtimeSecrets = vercelSecrets();
 
 const dataDir = path.resolve(__dirname, '../data');
 const jwtSecretFile = path.join(dataDir, '.jwt_secret');
@@ -23,7 +26,9 @@ const jwtSecretFile = path.join(dataDir, '.jwt_secret');
 const encKeyFile = path.join(dataDir, '.encryption_key');
 let _encryptionKey: string = process.env.ENCRYPTION_KEY || '';
 
-if (_encryptionKey) {
+if (runtimeSecrets) {
+  _encryptionKey = runtimeSecrets.encryption;
+} else if (_encryptionKey) {
   // Env var is set explicitly — persist it to file so the value survives
   // container restarts even if the env var is later removed.
   try {
@@ -105,7 +110,9 @@ export const ENCRYPTION_KEY = _encryptionKey;
 // via environment variable (env var would override a rotation on next restart).
 let _jwtSecret: string;
 
-try {
+if (runtimeSecrets) {
+  _jwtSecret = runtimeSecrets.jwt;
+} else try {
   _jwtSecret = fs.readFileSync(jwtSecretFile, 'utf8').trim();
 } catch {
   _jwtSecret = crypto.randomBytes(32).toString('hex');
@@ -129,6 +136,7 @@ export let JWT_SECRET = _jwtSecret;
 // Called by the admin rotate-jwt-secret endpoint to update the in-process
 // binding that all middleware and route files reference.
 export function updateJwtSecret(newSecret: string): void {
+  if (isVercelRuntime()) throw new Error('Rotate JWT_SECRET through deployment environment settings');
   JWT_SECRET = newSecret;
 }
 

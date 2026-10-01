@@ -1,3 +1,4 @@
+import RuntimeCapabilitiesNotice from '../../../components/shared/RuntimeCapabilitiesNotice'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import {
@@ -44,9 +45,9 @@ interface SectionTab {
 export default function MSettings() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { hasIntegrations, appVersion, activeTab, setActiveTab } = useSettings()
+  const { runtimeCapabilities, hasIntegrations, appVersion, activeTab, setActiveTab } = useSettings()
   const managed = useAuthStore((s) => s.managed)
-  const hasPlugins = usePluginStore((s) => s.plugins.length > 0)
+  const hasPlugins = usePluginStore((s) => s.plugins.length > 0) && runtimeCapabilities?.persistentPlugins !== false
   const [dropOpen, setDropOpen] = useState(false)
 
   const tabs: SectionTab[] = [
@@ -70,6 +71,7 @@ export default function MSettings() {
 
   return (
     <div className="px-4 pb-[calc(var(--bottom-nav-h,84px)+16px)] pt-[var(--m-safe-top,12px)]">
+      <RuntimeCapabilitiesNotice capabilities={runtimeCapabilities} />
       {/* Header: back + section switcher pill */}
       <div className="mb-3 flex items-center gap-2">
         <button

@@ -1,7 +1,11 @@
-import Database from 'better-sqlite3';
+import type { DbConnection } from './adapter';
 import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
 import { readEnv } from '../app-config';
+import { isVercelRuntime } from '../runtime';
 import { seedDocumentProviders } from './document-provider-seed';
+import { insertSeedRows } from './seed-rows';
+import { validatePassword } from '../nest/common/passwordPolicy';
 
 // bcrypt cost factor for the seeded admin password — kept in sync with authService.
 const BCRYPT_COST = 12;
@@ -16,7 +20,18 @@ function isOidcOnlyConfigured(): boolean {
   return !!(oidc.issuer && oidc.clientId);
 }
 
-function seedAdminAccount(db: Database.Database): void {
+/** Check before a release acquires a durable migration lock or changes schema. */
+export function validateSecureAdminBootstrap(): void {
+  const { email, password } = readEnv().adminBootstrap;
+  if (!email || !password) throw new Error('Secure first-run setup requires ADMIN_EMAIL and ADMIN_PASSWORD');
+  if (password.length < 12) throw new Error('ADMIN_PASSWORD must be at least 12 characters');
+  const policy = validatePassword(password);
+  if (!policy.ok) throw new Error(`ADMIN_PASSWORD does not meet the password policy: ${policy.reason}`);
+}
+
+interface PreparedAdmin { email: string; passwordHash: string }
+
+function seedAdminAccount(db: DbConnection, secureBootstrap = isVercelRuntime(), preparedAdmin?: PreparedAdmin): void {
   try {
     const env_admin_email = readEnv().adminBootstrap.email;
     const env_admin_pw = readEnv().adminBootstrap.password;
@@ -37,9 +52,10 @@ function seedAdminAccount(db: Database.Database): void {
     // Demo mode seeds its own admin (admin@trek.app, username 'admin') right after this.
     // Creating a first-run admin here would grab username 'admin' first and make the demo
     // seeder fail on the UNIQUE(username) constraint, leaving the demo user uncreated.
-    if (readEnv().demo.enabled) return;
+    if (readEnv().demo.enabled && !secureBootstrap) return;
 
-    if (isOidcOnlyConfigured()) {
+    if (secureBootstrap) validateSecureAdminBootstrap();
+    if (isOidcOnlyConfigured() && !secureBootstrap) {
       console.log('');
       console.log('╔══════════════════════════════════════════════╗');
       console.log('║  TREK — OIDC-Only Mode                       ║');
@@ -48,8 +64,6 @@ function seedAdminAccount(db: Database.Database): void {
       console.log('');
       return;
     }
-
-    const bcrypt = require('bcryptjs');
 
     let password: string;
     let email: string;
@@ -67,7 +81,8 @@ function seedAdminAccount(db: Database.Database): void {
       email = 'admin@trek.local';
     }
 
-    const hash = bcrypt.hashSync(password, BCRYPT_COST);
+    const hash = preparedAdmin?.passwordHash ?? bcrypt.hashSync(password, BCRYPT_COST);
+    if (preparedAdmin) email = preparedAdmin.email;
     const username = 'admin';
 
     db.prepare('INSERT INTO users (username, email, password_hash, role, must_change_password) VALUES (?, ?, ?, ?, 1)').run(username, email, hash, 'admin');
@@ -77,15 +92,18 @@ function seedAdminAccount(db: Database.Database): void {
     console.log('║  TREK — First Run: Admin Account Created     ║');
     console.log('╠══════════════════════════════════════════════╣');
     console.log(`║  Email:    ${email.padEnd(33)}║`);
-    console.log(`║  Password: ${password.padEnd(33)}║`);
+    if (!secureBootstrap && !env_admin_pw) {
+      console.log(`║  Password: ${password.padEnd(33)}║`);
+    }
     console.log('╚══════════════════════════════════════════════╝');
     console.log('');
   } catch (err: unknown) {
     console.error('[ERROR] Error seeding admin account:', err instanceof Error ? err.message : err);
+    if (secureBootstrap) throw err;
   }
 }
 
-function seedCategories(db: Database.Database): void {
+function seedCategories(db: DbConnection, strict = false): void {
   try {
     const existingCats = db.prepare('SELECT COUNT(*) as count FROM categories').get() as { count: number };
     if (existingCats.count === 0) {
@@ -101,16 +119,16 @@ function seedCategories(db: Database.Database): void {
         { name: 'Nature', color: '#84cc16', icon: '🌿' },
         { name: 'Other', color: '#6366f1', icon: '📍' },
       ];
-      const insertCat = db.prepare('INSERT INTO categories (name, color, icon) VALUES (?, ?, ?)');
-      for (const cat of defaultCategories) insertCat.run(cat.name, cat.color, cat.icon);
+      insertSeedRows(db, 'INSERT INTO categories (name, color, icon)', defaultCategories.map(cat => [cat.name, cat.color, cat.icon]));
       console.log('Default categories seeded');
     }
   } catch (err: unknown) {
     console.error('Error seeding categories:', err instanceof Error ? err.message : err);
+    if (strict) throw err;
   }
 }
 
-function seedAddons(db: Database.Database): void {
+function seedAddons(db: DbConnection, strict = false): void {
   try {
     const defaultAddons = [
       { id: 'packing', name: 'Lists', description: 'Packing lists and to-do tasks for your trips', type: 'trip', icon: 'ListChecks', enabled: 1, sort_order: 0 },
@@ -128,8 +146,8 @@ function seedAddons(db: Database.Database): void {
       { id: 'llm_parsing', name: 'AI Parsing', description: 'LLM fallback for booking imports kitinerary cannot read', type: 'integration', icon: 'Sparkles', enabled: 0, sort_order: 15 },
       { id: 'collections', name: 'Collections', description: 'Personal place library — save places across trips into named lists, copy into any trip, share with others', type: 'global', icon: 'Bookmark', enabled: 0, sort_order: 16 },
     ];
-    const insertAddon = db.prepare('INSERT OR IGNORE INTO addons (id, name, description, type, icon, enabled, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)');
-    for (const a of defaultAddons) insertAddon.run(a.id, a.name, a.description, a.type, a.icon, a.enabled, a.sort_order);
+    insertSeedRows(db, 'INSERT OR IGNORE INTO addons (id, name, description, type, icon, enabled, sort_order)',
+      defaultAddons.map(a => [a.id, a.name, a.description, a.type, a.icon, a.enabled, a.sort_order]));
 
     const providerRows = [
       {
@@ -149,8 +167,8 @@ function seedAddons(db: Database.Database): void {
         sort_order: 1,
       },
     ];
-    const insertProvider = db.prepare('INSERT OR IGNORE INTO photo_providers (id, name, description, icon, enabled, sort_order) VALUES (?, ?, ?, ?, ?, ?)');
-    for (const p of providerRows) insertProvider.run(p.id, p.name, p.description, p.icon, p.enabled, p.sort_order);
+    insertSeedRows(db, 'INSERT OR IGNORE INTO photo_providers (id, name, description, icon, enabled, sort_order)',
+      providerRows.map(p => [p.id, p.name, p.description, p.icon, p.enabled, p.sort_order]));
 
     const providerFields = [
       { provider_id: 'immich', field_key: 'immich_url', label: 'providerUrl', input_type: 'url', placeholder: 'https://immich.example.com', hint: null, required: 1, secret: 0, settings_key: 'immich_url', payload_key: 'immich_url', sort_order: 0 },
@@ -163,10 +181,8 @@ function seedAddons(db: Database.Database): void {
       { provider_id: 'synologyphotos', field_key: 'synology_otp', label: 'providerOTP', input_type: 'text', placeholder: '123456', hint: null, required: 0, secret: 0, settings_key: null, payload_key: 'synology_otp', sort_order: 3 },
       { provider_id: 'synologyphotos', field_key: 'synology_skip_ssl', label: 'skipSSLVerification', input_type: 'checkbox', placeholder: null, hint: null, required: 0, secret: 0, settings_key: 'synology_skip_ssl', payload_key: 'synology_skip_ssl', sort_order: 4 },
     ];
-    const insertProviderField = db.prepare('INSERT OR IGNORE INTO photo_provider_fields (provider_id, field_key, label, input_type, placeholder, hint, required, secret, settings_key, payload_key, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-    for (const f of providerFields) {
-      insertProviderField.run(f.provider_id, f.field_key, f.label, f.input_type, f.placeholder, f.hint, f.required, f.secret, f.settings_key, f.payload_key, f.sort_order);
-    }
+    insertSeedRows(db, 'INSERT OR IGNORE INTO photo_provider_fields (provider_id, field_key, label, input_type, placeholder, hint, required, secret, settings_key, payload_key, sort_order)',
+      providerFields.map(f => [f.provider_id, f.field_key, f.label, f.input_type, f.placeholder, f.hint, f.required, f.secret, f.settings_key, f.payload_key, f.sort_order]));
 
     // Document providers live in their own pair of tables (see the migration
     // for why they are not a `kind` column on photo_providers). Seeded from the
@@ -177,13 +193,42 @@ function seedAddons(db: Database.Database): void {
     console.log('Default addons seeded');
   } catch (err: unknown) {
     console.error('Error seeding addons:', err instanceof Error ? err.message : err);
+    if (strict) throw err;
   }
 }
 
-function runSeeds(db: Database.Database): void {
-  seedAdminAccount(db);
-  seedCategories(db);
-  seedAddons(db);
+interface SeedOptions {
+  secureBootstrap?: boolean;
+  initializeAdmin?: boolean;
+}
+
+/** Prepare CPU-heavy hashing before acquiring a remote interactive transaction. */
+export function prepareSecureSeeds(db: DbConnection, initializeAdmin = true): () => void {
+  let admin: PreparedAdmin | undefined;
+  if (initializeAdmin && !db.prepare('SELECT id FROM users LIMIT 1').get()) {
+    validateSecureAdminBootstrap();
+    const { email, password } = readEnv().adminBootstrap;
+    admin = { email: email!, passwordHash: bcrypt.hashSync(password!, BCRYPT_COST) };
+  }
+  return () => {
+    if (initializeAdmin) seedAdminAccount(db, true, admin);
+    seedCategories(db, true);
+    seedAddons(db, true);
+  };
+}
+
+function runSeeds(db: DbConnection, options: SeedOptions = {}): void {
+  const secureBootstrap = options.secureBootstrap ?? isVercelRuntime();
+  if (secureBootstrap) {
+    db.transaction(prepareSecureSeeds(db, options.initializeAdmin !== false))();
+    return;
+  }
+  const seed = () => {
+    if (options.initializeAdmin !== false) seedAdminAccount(db, secureBootstrap);
+    seedCategories(db, secureBootstrap);
+    seedAddons(db, secureBootstrap);
+  };
+  seed();
 }
 
 export { runSeeds, seedAdminAccount };

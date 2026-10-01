@@ -1,3 +1,4 @@
+import { isVercelRuntime } from '../../runtime';
 import { Injectable } from '@nestjs/common';
 import { ADDON_IDS } from '../../addons';
 import { DatabaseService } from '../database/database.service';
@@ -35,6 +36,7 @@ export class AirtrailLinkService {
 
   /** Global on/off: the addon must be enabled and sync not explicitly turned off. */
   syncGloballyEnabled(): boolean {
+    if (isVercelRuntime()) return false;
     if (!this.addons.isAddonEnabled(ADDON_IDS.AIRTRAIL)) return false;
     const row = this.db.get<{ value: string }>("SELECT value FROM app_settings WHERE key = 'airtrail_sync_enabled'");
     return row?.value !== 'false';

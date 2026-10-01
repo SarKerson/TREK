@@ -405,3 +405,13 @@ describe('mirrorProbeTargets', () => {
     expect(targets.map((t) => t.name)).toEqual(['uploads-local']);
   });
 });
+
+describe('deployment-managed private Blob', () => {
+  it('never turns a Blob backend into an editable or mirror-probe configuration', () => {
+    const state: StorageAdminState = { ...STATE, backends: [{ name: 'vercel-blob', type: 'vercel-blob', source: 'env', options: {}, categories: ['files'] }] };
+    const draft = settingsDocumentOf(state);
+    expect(draft.backends).toEqual([]);
+    expect(foldBackends(state, draft).rows).toEqual([]);
+    expect(mirrorProbeTargets(draft, state, { name: 'mirror', type: 'mirror', options: { primary: 'vercel-blob', replicas: [] } })).toEqual([]);
+  });
+});

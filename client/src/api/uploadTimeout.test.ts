@@ -29,6 +29,7 @@ describe('every multipart upload disables the global request timeout', () => {
   })
 
   function spyPost() {
+    vi.spyOn(apiClient, 'get').mockResolvedValue({ data: { bookingImport: false, aiParsing: false } })
     return vi.spyOn(apiClient, 'post').mockResolvedValue({ data: {} } as any)
   }
 

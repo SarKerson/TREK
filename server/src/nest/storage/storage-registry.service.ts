@@ -1,4 +1,7 @@
 import fs from 'node:fs';
+import { isVercelRuntime } from '../../runtime';
+import { readBlobStorageConfig } from '../../app-config/runtime';
+import { VercelBlobDriver } from './drivers/vercel-blob.driver';
 import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { STORAGE_BACKEND_TYPES, storageConfigSchema } from '@trek/shared';
 import { DatabaseService } from '../database/database.service';
@@ -28,7 +31,7 @@ export interface ResolvedCategory {
 export type BackendSource = 'built-in' | 'env' | 'settings';
 export interface BackendSnapshot {
   name: string;
-  type: 'local' | 's3' | 'mirror';
+  type: 'local' | 's3' | 'mirror' | 'vercel-blob';
   source: BackendSource;
   /** Stored options — secret fields still encrypted; masking is the admin layer's job. */
   options: Record<string, string | number | string[]>;
@@ -136,7 +139,7 @@ export class StorageRegistryService implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.seedFromFileOnce();
+    if (!isVercelRuntime()) this.seedFromFileOnce();
     this.load(true);
   }
 
@@ -155,6 +158,7 @@ export class StorageRegistryService implements OnModuleInit {
    * surface before persisting. cleanSpool stays boot-only (boot=false here).
    */
   preview(candidate: { backends: unknown; categories: unknown }): void {
+    if (isVercelRuntime()) throw new StorageBackendError('Storage is managed by Vercel on this deployment');
     void this.build(candidate, false);
   }
 
@@ -331,6 +335,11 @@ export class StorageRegistryService implements OnModuleInit {
    * defaults — which cannot be misconfigured — are loaded instead).
    */
   private load(boot: boolean): void {
+    if (isVercelRuntime()) {
+      this.state = this.buildVercel();
+      this.loadFailure = null;
+      return;
+    }
     try {
       this.state = this.build(this.readSettings(), boot);
       this.loadFailure = null;
@@ -367,6 +376,25 @@ export class StorageRegistryService implements OnModuleInit {
       }
     };
     return { backends: read(BACKENDS_KEY), categories: read(CATEGORIES_KEY) };
+  }
+
+  /** Never construct local drivers or fall back to ephemeral disk on Vercel. */
+  private buildVercel(): RegistryState {
+    const name = 'vercel-blob';
+    const driver = new VercelBlobDriver(name, readBlobStorageConfig());
+    fs.mkdirSync(GLOBAL_TEMP_DIR, { recursive: true });
+    const categories = new Map<ServedCategory, { backendName: string; keyPrefix: string }>();
+    for (const category of SERVED_CATEGORIES) {
+      categories.set(category, { backendName: name, keyPrefix: category === 'backups' ? 'backups/' : CATEGORY_PREFIXES[category] });
+    }
+    return {
+      drivers: new Map([[name, driver]]), categories,
+      snapshot: {
+        backends: [{ name, type: 'vercel-blob', source: 'env', options: {} }],
+        categories: Object.fromEntries(STORAGE_CATEGORIES.map((category) =>
+          [category, { backend: name, source: 'default' }])) as RegistrySnapshot['categories'],
+      },
+    };
   }
 
   private build(settings: { backends: unknown; categories: unknown }, boot: boolean): RegistryState {

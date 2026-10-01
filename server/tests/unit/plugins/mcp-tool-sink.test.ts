@@ -9,7 +9,7 @@ import { getPluginMcpToolSource, setPluginMcpToolSource } from '../../../src/plu
 import { registerTools } from '../../../src/mcp/tools';
 import type { McpContext, McpDynamicTool } from '../../../src/nest-mcp';
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const echo: McpDynamicTool = {

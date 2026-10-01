@@ -1,3 +1,5 @@
+import RuntimeCapabilitiesNotice from '../../../components/shared/RuntimeCapabilitiesNotice'
+import { runtimeTabAvailable } from '../../../store/runtimeCapabilitiesStore'
 import SchoolHolidayCatalog from '../../../components/Admin/SchoolHolidayCatalog'
 import { useState } from 'react'
 import {
@@ -71,7 +73,7 @@ export default function MAdmin() {
   const { t, locale } = useTranslation()
   const admin = useAdmin()
   const {
-    demoMode, mcpEnabled, devMode, managed, toast, navigate,
+    runtimeCapabilities, demoMode, mcpEnabled, devMode, managed, toast, navigate,
     activeTab, setActiveTab, stats, serverTimezone,
     bagTrackingEnabled, setBagTrackingEnabled,
     collabFeatures, setCollabFeatures,
@@ -98,7 +100,7 @@ export default function MAdmin() {
     ...(managed ? [] : [{ id: 'backup', label: t('admin.tabs.backup'), icon: Database }]),
     { id: 'audit', label: t('admin.tabs.audit'), icon: ScrollText },
     ...(devMode ? [{ id: 'dev-notifications', label: 'Dev: Notifications', icon: Bug }] : []),
-  ]
+  ].filter(tab => runtimeTabAvailable(tab.id, runtimeCapabilities))
   const activeSection = sections.find((s) => s.id === activeTab) ?? sections[0]
 
   const saveDemoBaseline = async () => {
@@ -114,6 +116,7 @@ export default function MAdmin() {
     // Flow screen: scrolls with the document (#1809), so no height and no
     // scroll container of its own.
     <div className="px-4 pb-[calc(var(--bottom-nav-h,84px)+16px)] pt-[var(--m-safe-top,12px)]">
+      <RuntimeCapabilitiesNotice capabilities={runtimeCapabilities} />
       {/* Header: back · section switcher · create user */}
       <div className="mb-3 flex items-center gap-2">
         <button
@@ -244,11 +247,11 @@ export default function MAdmin() {
           }}
         />
       )}
-      {activeTab === 'plugins' && <MAdminPluginsPanel />}
-      {activeTab === 'storage' && <MAdminStoragePanel />}
-      {activeTab === 'mcp-tokens' && <MAdminMcpTokensPanel />}
+      {activeTab === 'plugins' && runtimeTabAvailable('plugins', runtimeCapabilities) && <MAdminPluginsPanel />}
+      {activeTab === 'storage' && runtimeTabAvailable('storage', runtimeCapabilities) && <MAdminStoragePanel />}
+      {activeTab === 'mcp-tokens' && runtimeTabAvailable('mcp-tokens', runtimeCapabilities) && <MAdminMcpTokensPanel />}
       {activeTab === 'github' && <MAdminGitHubPanel isPrerelease={updateInfo?.is_prerelease ?? false} />}
-      {activeTab === 'backup' && <MAdminBackupPanel />}
+      {activeTab === 'backup' && runtimeTabAvailable('backup', runtimeCapabilities) && <MAdminBackupPanel />}
       {activeTab === 'audit' && <MAdminAuditLogPanel serverTimezone={serverTimezone} />}
       {activeTab === 'dev-notifications' && <MAdminDevNotificationsPanel />}
 

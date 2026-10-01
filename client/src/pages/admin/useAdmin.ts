@@ -1,3 +1,5 @@
+import { useRuntimeCapabilities } from '../../hooks/useRuntimeCapabilities'
+import { runtimeTabAvailable } from '../../store/runtimeCapabilitiesStore'
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import apiClient, { adminApi, authApi } from '../../api/client'
@@ -42,6 +44,7 @@ const MANAGED_HIDDEN = ['storage', 'github', 'backup']
  * Behaviour is identical to the previous in-component logic.
  */
 export function useAdmin() {
+  const runtimeCapabilities = useRuntimeCapabilities()
   const { demoMode, serverTimezone } = useAuthStore()
   const { t } = useTranslation()
   const hour12 = useSettingsStore(s => s.settings.time_format) === '12h'
@@ -76,8 +79,8 @@ export function useAdmin() {
     }, { replace: true })
   }, [setSearchParams])
   useEffect(() => {
-    if (managed && MANAGED_HIDDEN.includes(activeTab)) setActiveTab('users')
-  }, [managed, activeTab, setActiveTab])
+    if ((managed && MANAGED_HIDDEN.includes(activeTab)) || !runtimeTabAvailable(activeTab, runtimeCapabilities)) setActiveTab('users')
+  }, [managed, activeTab, setActiveTab, runtimeCapabilities])
 
   const [users, setUsers] = useState<AdminUser[]>([])
   const [stats, setStats] = useState<AdminStats | null>(null)
@@ -488,6 +491,7 @@ export function useAdmin() {
 
   return {
     // store-derived
+    runtimeCapabilities,
     demoMode, serverTimezone, hour12, mcpEnabled, devMode, managed, currentUser,
     updateApiKeys, setAppRequireMfa, setTripRemindersEnabled,
     setPlacesPhotosEnabled, setPlacesAutocompleteEnabled, setPlacesDetailsEnabled, setPlacesEnrichEnabled, setPlaceShadowEnabled, logout,

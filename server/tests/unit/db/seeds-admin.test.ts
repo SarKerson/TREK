@@ -12,7 +12,7 @@ import { createTestDb } from '../../helpers/test-db';
 import type Database from 'better-sqlite3';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
-const ENV_KEYS = ['ADMIN_EMAIL', 'ADMIN_PASSWORD', 'DEMO_MODE', 'OIDC_ONLY', 'OIDC_ISSUER', 'OIDC_CLIENT_ID'];
+const ENV_KEYS = ['ADMIN_EMAIL', 'ADMIN_PASSWORD', 'DEMO_MODE', 'OIDC_ONLY', 'OIDC_ISSUER', 'OIDC_CLIENT_ID', 'VERCEL', 'NODE_ENV'];
 
 function countUsers(db: Database.Database): number {
   return (db.prepare('SELECT COUNT(*) as c FROM users').get() as { c: number }).c;
@@ -98,4 +98,35 @@ describe('seedAdminAccount — first-run admin', () => {
     const msg = warn.mock.calls.map((c) => c.join(' ')).join('\n');
     expect(msg).toContain('Only one of ADMIN_EMAIL/ADMIN_PASSWORD');
   });
+  it('does not print an explicitly configured password', () => {
+    process.env.ADMIN_EMAIL = 'owner@example.com';
+    process.env.ADMIN_PASSWORD = 'test-only-configured-password';
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    seedAdminAccount(db);
+    expect(JSON.stringify(log.mock.calls)).not.toContain(process.env.ADMIN_PASSWORD);
+  });
+
+  it('refuses Vercel first-run setup without explicit owner credentials', () => {
+    process.env.VERCEL = '1';
+    expect(() => seedAdminAccount(db)).toThrow('requires ADMIN_EMAIL and ADMIN_PASSWORD');
+    expect(countUsers(db)).toBe(0);
+  });
+  it('rejects short or weak remote bootstrap passwords without logging their value', () => {
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+    process.env.ADMIN_EMAIL = 'owner@example.com';
+    process.env.ADMIN_PASSWORD = 'Tiny1!';
+    expect(() => seedAdminAccount(db, true)).toThrow('at least 12 characters');
+    process.env.ADMIN_PASSWORD = 'not-strong-enough';
+    expect(() => seedAdminAccount(db, true)).toThrow('password policy');
+    expect(JSON.stringify(errorLog.mock.calls)).not.toContain('Tiny1!');
+    expect(JSON.stringify(errorLog.mock.calls)).not.toContain('not-strong-enough');
+    expect(countUsers(db)).toBe(0);
+  });
+  it('accepts a compliant remote bootstrap password', () => {
+    process.env.ADMIN_EMAIL = 'owner@example.com';
+    process.env.ADMIN_PASSWORD = 'Test-Only-Owner-123!';
+    seedAdminAccount(db, true);
+    expect(countUsers(db)).toBe(1);
+  });
+
 });

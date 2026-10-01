@@ -8,7 +8,7 @@ import { RealtimeService } from '../../../../src/nest/realtime/realtime.service'
 
 type Preview = ReturnType<typeof vi.fn>;
 function makeService(preview: Preview) {
-  return new ImportJobsService({ preview } as never, new RealtimeService());
+  return new ImportJobsService({ preview } as never, new RealtimeService(), undefined as never);
 }
 const files = (n: number) => Array.from({ length: n }, (_, i) => ({ originalname: `f${i}.pdf` })) as never;
 const eventsFor = (jobId: string) => broadcastToUser.mock.calls.map((c) => c[1]).filter((p) => p.jobId === jobId);

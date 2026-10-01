@@ -1,4 +1,5 @@
-import type Database from 'better-sqlite3';
+import type { DbConnection } from './adapter';
+import { insertSeedRows } from './seed-rows';
 
 /**
  * The five document providers and the fields their connection form asks for.
@@ -118,20 +119,14 @@ const FIELDS: ProviderFieldRow[] = [
   { provider_id: 'synologydrive', field_key: 'allow_insecure_tls', label: 'allowInsecureTls', input_type: 'checkbox', placeholder: null, hint: null, required: 0, secret: 0, sort_order: 5 },
 ];
 
-export function seedDocumentProviders(db: Database.Database): void {
-  const insertProvider = db.prepare(
-    'INSERT OR IGNORE INTO document_providers (id, name, description, icon, enabled, sort_order) VALUES (?, ?, ?, ?, 0, ?)',
-  );
-  for (const p of PROVIDERS) insertProvider.run(p.id, p.name, p.description, p.icon, p.sort_order);
-
-  const insertField = db.prepare(
+export function seedDocumentProviders(db: DbConnection): void {
+  insertSeedRows(db,
+    'INSERT OR IGNORE INTO document_providers (id, name, description, icon, enabled, sort_order)',
+    PROVIDERS.map(p => [p.id, p.name, p.description, p.icon, 0, p.sort_order]));
+  insertSeedRows(db,
     `INSERT OR IGNORE INTO document_provider_fields
-       (provider_id, field_key, label, input_type, placeholder, hint, required, secret, sort_order)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  );
-  for (const f of FIELDS) {
-    insertField.run(f.provider_id, f.field_key, f.label, f.input_type, f.placeholder, f.hint, f.required, f.secret, f.sort_order);
-  }
+       (provider_id, field_key, label, input_type, placeholder, hint, required, secret, sort_order)`,
+    FIELDS.map(f => [f.provider_id, f.field_key, f.label, f.input_type, f.placeholder, f.hint, f.required, f.secret, f.sort_order]));
 }
 
 export const DOCUMENT_PROVIDER_SEED_IDS = PROVIDERS.map((p) => p.id);

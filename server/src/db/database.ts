@@ -1,4 +1,7 @@
-import type Database from 'better-sqlite3';
+import type { DbConnection } from './adapter';
+import { LibsqlConnection } from './adapter';
+import { readRemoteDatabaseConfig } from '../app-config/runtime';
+import { assertRemoteDatabaseReady } from './remote-schema';
 import path from 'path';
 import fs from 'fs';
 import { readEnv } from '../app-config';
@@ -13,8 +16,11 @@ import { Place, Tag } from '../types';
 // parallel forks can't race on the same file or share migration state.
 const isTest = readEnv().app.isTest;
 
+const remote = isTest ? null : readRemoteDatabaseConfig();
 let dbPath: string;
-if (isTest) {
+if (remote) {
+  dbPath = remote.url;
+} else if (isTest) {
   dbPath = ':memory:';
 } else if (readEnv().db.trekDbFile) {
   // Explicit DB file (used by the Playwright E2E harness to run against an
@@ -31,20 +37,32 @@ if (isTest) {
   dbPath = path.join(dataDir, 'travel.db');
 }
 
-let _db: Database.Database | null = null;
+let _db: DbConnection | null = null;
 
 function initDb(): void {
   if (_db) {
-    try { _db.exec('PRAGMA wal_checkpoint(TRUNCATE)'); } catch (e) {}
+    try { if (!remote) _db.exec('PRAGMA wal_checkpoint(TRUNCATE)'); } catch (e) {}
     try { _db.close(); } catch (e) {}
     _db = null;
   }
 
-  _db = openDatabase(dbPath);
+  if (remote) {
+    const connection = new LibsqlConnection(remote.url, remote.authToken);
+    try {
+      assertRemoteDatabaseReady(connection);
+      _db = connection;
+    } catch (error) {
+      connection.close();
+      throw error;
+    }
+    return;
+  }
+  const local = openDatabase(dbPath);
+  _db = local;
   // Ahead of the journal switch now: changing journal_mode needs an exclusive
   // lock, which a sibling process (reset-admin, the rotation script) may hold.
   _db.exec('PRAGMA busy_timeout = 5000');
-  const durability = applyDurabilityPragmas(_db);
+  const durability = applyDurabilityPragmas(local);
   _db.exec('PRAGMA foreign_keys = ON');
   // Reported so an operator can see whether their setting took — the test DB is
   // :memory: and has no journal file, so there is nothing to report there.
@@ -60,7 +78,7 @@ function initDb(): void {
 
 initDb();
 
-const db = new Proxy({} as Database.Database, {
+const db = new Proxy({} as DbConnection, {
   get(_, prop: string | symbol) {
     if (!_db) throw new Error('Database connection is not available (restore in progress?)');
     const val = (_db as unknown as Record<string | symbol, unknown>)[prop];
@@ -72,7 +90,7 @@ const db = new Proxy({} as Database.Database, {
   },
 });
 
-if (readEnv().demo.enabled) {
+if (!remote && readEnv().demo.enabled) {
   try {
     const { seedDemoData } = require('../demo/demo-seed');
     seedDemoData(_db);
@@ -83,7 +101,7 @@ if (readEnv().demo.enabled) {
 
 function closeDb(): void {
   if (_db) {
-    try { _db.exec('PRAGMA wal_checkpoint(TRUNCATE)'); } catch (e) {}
+    try { if (!remote) _db.exec('PRAGMA wal_checkpoint(TRUNCATE)'); } catch (e) {}
     try { _db.close(); } catch (e) {}
     _db = null;
     console.log('[DB] Database connection closed');

@@ -1,6 +1,8 @@
 import type { TranslationStrings } from '../types';
 
 const common: TranslationStrings = {
+  'common.serverlessLimitations':
+    'Bu sunucusuz dağıtımda kalıcı eklentiler, arka planda otomatik eşitleme, tüm kurulumun yedeklenmesi veya geri yüklenmesi ve MCP kullanılamaz. Seyahat planlama ve elle eşitleme kullanılabilir.',
   'common.save': 'Kaydet',
   'common.showMore': 'Daha fazla göster',
   'common.showLess': 'Daha az göster',

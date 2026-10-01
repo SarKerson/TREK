@@ -1,6 +1,8 @@
 import type { TranslationStrings } from '../types';
 
 const common: TranslationStrings = {
+  'common.serverlessLimitations':
+    'لا يدعم هذا النشر بلا خادم الإضافات الدائمة أو المزامنة التلقائية في الخلفية أو النسخ الاحتياطي الكامل للمثيل واستعادته أو MCP. يظل تخطيط الرحلات والمزامنة اليدوية متاحين.',
   'common.save': 'حفظ',
   'common.showMore': 'عرض المزيد',
   'common.showLess': 'عرض أقل',

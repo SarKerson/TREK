@@ -1,3 +1,4 @@
+import { isVercelRuntime } from '../../runtime';
 import { readEnv } from '../../app-config';
 import fs from 'fs';
 import path from 'path';
@@ -61,6 +62,7 @@ function rotateIfNeeded(): void {
 }
 
 function writeToFile(line: string): void {
+  if (isVercelRuntime()) return; // Platform captures stdout/stderr; no ephemeral log files.
   try {
     ensureLogsDir();
     rotateIfNeeded();

@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { isVercelRuntime } from '../../runtime';
+import { Injectable, HttpException } from '@nestjs/common';
 import crypto from 'crypto';
 import { DOCSYNC_SECRET_MASK, type DocsyncConnectionInput, type DocsyncLinkInput } from '@trek/shared';
 import { DatabaseService } from '../database/database.service';
@@ -398,6 +399,7 @@ export class DocSyncConfigService {
    * anything that credential could not open anyway.
    */
   createLink(tripId: number, userId: number, input: DocsyncLinkInput): DocResult<LinkRow> {
+    this.assertSyncAvailable(input.syncEnabled);
     const conn = this.getConnection(input.connectionId);
     if (!conn || conn.trip_id !== tripId) {
       return { success: false, error: { code: 'not_found', detail: 'connection not found for this trip' } };
@@ -439,7 +441,12 @@ export class DocSyncConfigService {
     return { success: true, data: this.getLink(Number(info.lastInsertRowid)) as LinkRow };
   }
 
+  private assertSyncAvailable(enabled: boolean | undefined): void {
+    if (isVercelRuntime() && enabled) throw new HttpException({ error: 'Background autosync is unavailable on this serverless deployment' }, 503);
+  }
+
   updateLink(id: number, patch: Partial<DocsyncLinkInput>): LinkRow | undefined {
+    this.assertSyncAvailable(patch.syncEnabled);
     const sets: string[] = [];
     const values: unknown[] = [];
     // Sync automatically is the way back for an orphaned binding, but only once
@@ -492,7 +499,7 @@ export class DocSyncConfigService {
       direction: link.direction,
       deletePolicy: link.delete_policy,
       conflictPolicy: link.conflict_policy,
-      syncEnabled: link.sync_enabled === 1,
+      syncEnabled: !isVercelRuntime() && link.sync_enabled === 1,
       lastSyncAt: link.last_sync_at,
       lastSyncState: link.last_sync_state,
       lastSyncError: link.last_sync_error,
@@ -501,7 +508,7 @@ export class DocSyncConfigService {
       // subscribe on its own (Papra, and Nextcloud without admin rights). Not
       // for a provider that takes no webhook at all: an address with nowhere
       // to paste it only promises what the timer delivers anyway.
-      webhookUrl: webhookBaseUrl && link.webhook_token && this.takesWebhook(link)
+      webhookUrl: !isVercelRuntime() && webhookBaseUrl && link.webhook_token && this.takesWebhook(link)
         ? `${webhookBaseUrl}/api/docsync/webhook/${link.webhook_token}`
         : null,
       webhookSecret: link.webhook_secret ? DOCSYNC_SECRET_MASK : null,

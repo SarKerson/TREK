@@ -195,7 +195,7 @@ describe('onopen / join on reconnect', () => {
     );
   });
 
-  it('FE-COMP-WS-008: onopen invokes refetchCallback for each active trip', async () => {
+  it('FE-COMP-WS-008: refetch waits for each room acknowledgement', async () => {
     const refetch = vi.fn();
     setRefetchCallback(refetch);
     joinTrip(1);
@@ -203,6 +203,8 @@ describe('onopen / join on reconnect', () => {
     await vi.advanceTimersByTimeAsync(0);
 
     lastSocket().onopen!();
+    expect(refetch).not.toHaveBeenCalled();
+    lastSocket().onmessage!({ data: JSON.stringify({ type: 'joined', tripId: 1 }) });
 
     expect(refetch).toHaveBeenCalledWith('1');
   });

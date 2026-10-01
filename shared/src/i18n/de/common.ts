@@ -1,6 +1,8 @@
 import type { TranslationStrings } from '../types';
 
 const common: TranslationStrings = {
+  'common.serverlessLimitations':
+    'Diese serverlose Bereitstellung bietet keine dauerhaften Plugins, automatische Hintergrundsynchronisierung, vollständige Instanzsicherung oder -wiederherstellung und kein MCP. Reiseplanung und manuelle Synchronisierung bleiben verfügbar.',
   'common.save': 'Speichern',
   'common.showMore': 'Mehr anzeigen',
   'common.showLess': 'Weniger anzeigen',

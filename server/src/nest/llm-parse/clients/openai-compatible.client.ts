@@ -137,7 +137,7 @@ export class OpenAiCompatibleClient implements LlmExtractionClient {
     const shape: RequestShape = { tokenParam: 'max_tokens', jsonObject: false, noResponseFormat: false, omitTemperature: false };
     const tried = { tokenParam: false, temperature: false, jsonObject: false, noResponseFormat: false };
 
-    let res = await this.send(url, buildBody(shape), input.apiKey);
+    let res = await this.send(url, buildBody(shape), input.apiKey, input.signal);
     let detail = res.ok ? '' : await res.text().catch(() => '');
 
     // A 400 is the server naming the parameter it dislikes. Apply every remedy it
@@ -169,7 +169,7 @@ export class OpenAiCompatibleClient implements LlmExtractionClient {
           tried.jsonObject = true;
         }
       }
-      res = await this.send(url, buildBody(shape), input.apiKey);
+      res = await this.send(url, buildBody(shape), input.apiKey, input.signal);
       detail = res.ok ? '' : await res.text().catch(() => '');
     }
 
@@ -188,7 +188,7 @@ export class OpenAiCompatibleClient implements LlmExtractionClient {
     return nuextract ? parseNuExtract(content) : parseReservations(content);
   }
 
-  private async send(url: string, body: unknown, apiKey?: string): Promise<Response> {
+  private async send(url: string, body: unknown, apiKey?: string, signal?: AbortSignal): Promise<Response> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), readEnv().integrations.llmTimeoutMs);
     try {
@@ -196,7 +196,7 @@ export class OpenAiCompatibleClient implements LlmExtractionClient {
       // metadata endpoint, while still allowing a local/LAN Ollama.
       return await safeFetchLlm(url, {
         method: 'POST',
-        signal: controller.signal,
+        signal: signal ? AbortSignal.any([controller.signal, signal]) : controller.signal,
         headers: {
           'content-type': 'application/json',
           ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),

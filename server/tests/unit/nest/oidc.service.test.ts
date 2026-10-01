@@ -1267,3 +1267,37 @@ describe('OIDC settings — the lockout guard', () => {
     toggles.mockRestore();
   });
 });
+
+describe('Vercel invite-only OIDC registration', () => {
+  beforeEach(() => vi.stubEnv('VERCEL', '1'));
+  afterEach(() => vi.unstubAllEnvs());
+  const applicant = { sub: 'private-family-subject', email: 'private-family@example.com', name: 'Family Member', email_verified: true };
+
+  it('rejects uninvited new accounts even with empty database or public settings enabled', () => {
+    expect(svc.findOrCreateUser(applicant, MOCK_CONFIG)).toEqual({ error: 'registration_disabled' });
+    createUser(testDb, { role: 'admin' });
+    for (const key of ['allow_registration', 'oidc_registration']) {
+      testDb.prepare('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)').run(key, 'true');
+    }
+    expect(svc.findOrCreateUser(applicant, MOCK_CONFIG)).toEqual({ error: 'registration_disabled' });
+    expect(testDb.prepare('SELECT id FROM users WHERE email = ?').get(applicant.email)).toBeUndefined();
+  });
+
+  it('accepts an admin invite once and permits that existing account to sign in without another invite', () => {
+    const { user: admin } = createUser(testDb, { role: 'admin' });
+    testDb.prepare("INSERT INTO invite_tokens (token, max_uses, used_count, created_by) VALUES ('private-invite', 1, 0, ?)").run(admin.id);
+    const result = svc.findOrCreateUser(applicant, MOCK_CONFIG, 'private-invite');
+    expect(result).toMatchObject({ created: true, user: { email: applicant.email, role: 'user' } });
+    expect(svc.findOrCreateUser({ ...applicant, sub: 'second-subject', email: 'second@example.com' }, MOCK_CONFIG, 'private-invite')).toEqual({ error: 'registration_disabled' });
+    expect(svc.findOrCreateUser(applicant, MOCK_CONFIG)).toMatchObject({ user: { email: applicant.email } });
+  });
+
+  it('rejects invalid, expired and exhausted invitations instead of falling back to public signup', () => {
+    const { user: admin } = createUser(testDb, { role: 'admin' });
+    testDb.prepare("INSERT INTO invite_tokens (token, max_uses, used_count, expires_at, created_by) VALUES ('expired-private', 1, 0, '2000-01-01T00:00:00.000Z', ?)").run(admin.id);
+    testDb.prepare("INSERT INTO invite_tokens (token, max_uses, used_count, created_by) VALUES ('exhausted-private', 1, 1, ?)").run(admin.id);
+    for (const token of ['invalid-private', 'expired-private', 'exhausted-private']) {
+      expect(svc.findOrCreateUser(applicant, MOCK_CONFIG, token)).toEqual({ error: 'registration_disabled' });
+    }
+  });
+});

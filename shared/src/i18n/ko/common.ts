@@ -1,6 +1,8 @@
 import type { TranslationStrings } from '../types';
 
 const common: TranslationStrings = {
+  'common.serverlessLimitations':
+    '이 서버리스 배포에서는 상시 실행 플러그인, 백그라운드 자동 동기화, 전체 인스턴스 백업 및 복원, MCP를 사용할 수 없습니다. 여행 계획과 수동 동기화는 계속 사용할 수 있습니다.',
   'common.save': '저장',
   'common.showMore': '더 보기',
   'common.showLess': '접기',

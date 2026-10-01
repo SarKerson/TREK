@@ -1,6 +1,8 @@
 import type { TranslationStrings } from '../types';
 
 const common: TranslationStrings = {
+  'common.serverlessLimitations':
+    'To wdrożenie bezserwerowe nie obsługuje trwałych wtyczek, automatycznej synchronizacji w tle, pełnej kopii zapasowej ani odtwarzania instancji, ani MCP. Planowanie podróży i ręczna synchronizacja pozostają dostępne.',
   'common.save': 'Zapisz',
   'common.showMore': 'Pokaż więcej',
   'common.showLess': 'Pokaż mniej',

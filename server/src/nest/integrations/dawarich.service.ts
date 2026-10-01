@@ -1,3 +1,4 @@
+import { isVercelRuntime } from '../../runtime';
 import { Injectable } from '@nestjs/common';
 import {
   DAWARICH_KEY_MASK,
@@ -77,7 +78,7 @@ export class DawarichService {
       allowInsecureTls: !!row?.allow_insecure_tls,
       // A row that does not exist yet is a user who has never opened the card,
       // and the default there is "poll once it is connected".
-      syncEnabled: row ? !!row.sync_enabled : true,
+      syncEnabled: !isVercelRuntime() && (row ? !!row.sync_enabled : true),
       connected: !!(row?.url && row?.api_key),
       lastSyncAt: row?.last_sync_at ?? null,
       lastSyncState: normalizeSyncState(row?.last_sync_state),
@@ -109,6 +110,7 @@ export class DawarichService {
     syncEnabled: boolean,
     clientIp: string | null,
   ): Promise<{ success: boolean; warning?: string; warningCode?: string; warningIp?: string; error?: string; code?: string }> {
+    if (isVercelRuntime() && syncEnabled) return { success: false, error: 'Background autosync is unavailable on this serverless deployment' };
     const trimmedUrl = (url || '').trim();
     let warning: string | undefined;
     let warningCode: string | undefined;

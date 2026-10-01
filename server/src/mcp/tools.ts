@@ -1,4 +1,4 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { McpAttachOptions, McpRegistry } from '../nest-mcp';
 import { getPluginMcpToolSource } from '../plugin-mcp-tools';
 

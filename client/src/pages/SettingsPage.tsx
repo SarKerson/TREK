@@ -1,3 +1,4 @@
+import RuntimeCapabilitiesNotice from '../components/shared/RuntimeCapabilitiesNotice'
 import React from 'react'
 import { Settings, SlidersHorizontal, Paintbrush, Map, Bell, Plug, CloudOff, User, Info, Blocks } from 'lucide-react'
 import { useTranslation } from '../i18n'
@@ -24,8 +25,8 @@ export default function SettingsPage(): React.ReactElement {
 function SettingsPageDesktop(): React.ReactElement {
   const { t } = useTranslation()
   // Page = wiring container: addon/version loading + active-tab state in the hook.
-  const { hasIntegrations, appVersion, activeTab, setActiveTab, managed } = useSettings()
-  const hasPlugins = usePluginStore(s => s.plugins.length > 0)
+  const { runtimeCapabilities, hasIntegrations, appVersion, activeTab, setActiveTab, managed } = useSettings()
+  const hasPlugins = usePluginStore(s => s.plugins.length > 0) && runtimeCapabilities?.persistentPlugins !== false
 
   const tabs: PageSidebarTab[] = [
     { id: 'display', label: t('settings.tabs.display'), icon: SlidersHorizontal },
@@ -52,7 +53,8 @@ function SettingsPageDesktop(): React.ReactElement {
   return (
     <PageShell background="var(--bg-secondary)">
       <div className="w-full px-4 sm:px-6 lg:px-8 py-8">
-          {/* Header */}
+          <RuntimeCapabilitiesNotice capabilities={runtimeCapabilities} />
+      {/* Header */}
           <div className="flex items-center gap-3 mb-6">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-surface-tertiary">
               <Settings className="w-5 h-5 text-content-secondary" />

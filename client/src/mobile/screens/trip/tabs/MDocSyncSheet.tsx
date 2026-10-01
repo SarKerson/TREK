@@ -385,13 +385,13 @@ function DetailView({
 
       {canManage && (
         <>
-          <SettingRow label={t('docsync.syncEnabled')} hint={t('docsync.binding.autoHint')}>
+          {sync.backgroundAutosync !== false && <SettingRow label={t('docsync.syncEnabled')} hint={t('docsync.binding.autoHint')}>
             <MToggle
               checked={link.syncEnabled}
               ariaLabel={t('docsync.syncEnabled')}
               onChange={() => void sync.updateLink(link.id, { syncEnabled: !link.syncEnabled })}
             />
-          </SettingRow>
+          </SettingRow>}
 
           <SettingRow label={t('docsync.deletePolicy')} hint={t('docsync.binding.deleteHint')}>
             <button

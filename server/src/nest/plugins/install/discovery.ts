@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type BetterSqlite3 from 'better-sqlite3';
+import type { DbConnection } from '../../../db/adapter';
 import { pluginsCodeRoot, pluginCodeDir } from '../paths';
 import { parseJsonText, parseManifest, type PluginManifest } from './manifest';
 import { scanForNativeBinaries } from './native-scan';
@@ -14,7 +14,7 @@ import { devLinkEnabled } from '../dev-link';
  * manifest is invalid or that ships native binaries is skipped (recorded to its
  * error log if it already existed).
  */
-export function discoverPlugins(db: BetterSqlite3.Database): { discovered: string[]; skipped: string[] } {
+export function discoverPlugins(db: DbConnection): { discovered: string[]; skipped: string[] } {
   const root = pluginsCodeRoot();
   const discovered: string[] = [];
   const skipped: string[] = [];
@@ -61,7 +61,7 @@ export function discoverPlugins(db: BetterSqlite3.Database): { discovered: strin
   return { discovered, skipped };
 }
 
-function upsert(db: BetterSqlite3.Database, m: PluginManifest): void {
+function upsert(db: DbConnection, m: PluginManifest): void {
   const dependencies = JSON.stringify({ requiredAddons: m.requiredAddons, pluginDependencies: m.pluginDependencies });
   const existing = db.prepare('SELECT id FROM plugins WHERE id = ?').get(m.id) as { id: string } | undefined;
   if (existing) {

@@ -1,12 +1,12 @@
 import bcrypt from 'bcryptjs';
-import Database from 'better-sqlite3';
+import type { DbConnection } from '../db/adapter';
 import { readEnv } from '../app-config';
 import { DEMO_PASS } from '../nest/common/demo';
 // Static like in demo-reset.job.ts: the module top is inert, everything that
 // touches the database happens inside the functions.
 import { saveBaseline, hasBaseline } from './demo-reset';
 
-function seedDemoData(db: Database.Database): { adminId: number; demoId: number } {
+function seedDemoData(db: DbConnection): { adminId: number; demoId: number } {
   const ADMIN_USER = readEnv().demo.adminUser;
   const ADMIN_EMAIL = readEnv().demo.adminEmailRaw || 'admin@trek.app';
   const ADMIN_PASS = readEnv().demo.adminPass;
@@ -65,7 +65,7 @@ function seedDemoData(db: Database.Database): { adminId: number; demoId: number 
   return { adminId: admin.id, demoId: demo.id };
 }
 
-function ensureDemoMembership(db: Database.Database, adminId: number, demoId: number): void {
+function ensureDemoMembership(db: DbConnection, adminId: number, demoId: number): void {
   const trips = db.prepare('SELECT id FROM trips WHERE user_id = ?').all(adminId) as { id: number }[];
   const insertMember = db.prepare('INSERT OR IGNORE INTO trip_members (trip_id, user_id, invited_by) VALUES (?, ?, ?)');
   for (const trip of trips) {
@@ -73,7 +73,7 @@ function ensureDemoMembership(db: Database.Database, adminId: number, demoId: nu
   }
 }
 
-function seedExampleTrips(db: Database.Database, adminId: number, demoId: number): void {
+function seedExampleTrips(db: DbConnection, adminId: number, demoId: number): void {
   const insertTrip = db.prepare('INSERT INTO trips (user_id, title, description, start_date, end_date, currency) VALUES (?, ?, ?, ?, ?, ?)');
   const insertDay = db.prepare('INSERT INTO days (trip_id, day_number, date) VALUES (?, ?, ?)');
   const insertPlace = db.prepare('INSERT INTO places (trip_id, name, lat, lng, address, category_id, place_time, duration_minutes, notes, image_url, google_place_id, website, phone) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');

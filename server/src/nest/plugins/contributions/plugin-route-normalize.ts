@@ -1,6 +1,6 @@
 import { stripEmoji } from '../text-sanitize';
 
-import type Database from 'better-sqlite3';
+import type { DbConnection } from '../../../db/adapter';
 
 type Tone = 'default' | 'success' | 'warn' | 'danger';
 
@@ -120,7 +120,7 @@ export function normalize(
   return { pluginId, profile, coordinates, distance, duration, legs, viaPoints };
 }
 
-export function declaredProfiles(conn: Database.Database, pluginId: string): string[] {
+export function declaredProfiles(conn: DbConnection, pluginId: string): string[] {
   try {
     const row = conn.prepare('SELECT capabilities FROM plugins WHERE id = ?').get(pluginId) as
       | { capabilities?: string }

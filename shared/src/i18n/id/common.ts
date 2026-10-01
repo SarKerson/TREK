@@ -1,6 +1,8 @@
 import type { TranslationStrings } from '../types';
 
 const common: TranslationStrings = {
+  'common.serverlessLimitations':
+    'Penerapan tanpa server ini tidak menyediakan plugin persisten, sinkronisasi otomatis di latar belakang, pencadangan atau pemulihan seluruh instans, maupun MCP. Perencanaan perjalanan dan sinkronisasi manual tetap tersedia.',
   'common.save': 'Simpan',
   'common.showMore': 'Tampilkan lebih banyak',
   'common.showLess': 'Tampilkan lebih sedikit',

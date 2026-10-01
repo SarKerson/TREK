@@ -25,6 +25,7 @@ import { FLAT_SCHEMA_BY_TYPE, FLAT_TYPES, FLIGHTS_ARRAY_SCHEMA, UNION_SINGLE_SCH
 import { extractEnforced } from './ollama-format.client';
 
 export interface RouterContext {
+  signal?: AbortSignal;
   baseUrl: string;
   model: string;
   apiKey?: string;
@@ -206,7 +207,7 @@ async function extractFlights(text: string, ctx: RouterContext): Promise<FlatLik
     'Extract EVERY flight segment in the document (each flight number is one segment; a round trip has the ' +
     'outbound AND the return legs). vehicle_number = the flight number, from_code/to_code = 3-letter IATA codes, ' +
     "departure_time/arrival_time = full ISO 'YYYY-MM-DDTHH:MM:00' using the date of the section heading each flight is listed under.";
-  const out = await extractEnforced({ baseUrl: ctx.baseUrl, model: ctx.model, apiKey: ctx.apiKey, system, user: `Document:\n${text}`, schema: FLIGHTS_ARRAY_SCHEMA, numPredict: 900 });
+  const out = await extractEnforced({ baseUrl: ctx.baseUrl, model: ctx.model, apiKey: ctx.apiKey, ...(ctx.signal ? { signal: ctx.signal } : {}), system, user: `Document:\n${text}`, schema: FLIGHTS_ARRAY_SCHEMA, numPredict: 900 });
   const legs = Array.isArray((out as { flights?: unknown })?.flights) ? (out as { flights: Record<string, unknown>[] }).flights : [];
   return legs.map((leg) => fixArrivalDate(normalizeDates({ ...leg, type: 'flight' as FlatType })));
 }
@@ -217,7 +218,7 @@ async function extractSingle(text: string, ctx: RouterContext): Promise<FlatLike
   const known = detectType(text);
   const call = (schema: Record<string, unknown>, hint: string) =>
     extractEnforced({
-      baseUrl: ctx.baseUrl, model: ctx.model, apiKey: ctx.apiKey,
+      baseUrl: ctx.baseUrl, model: ctx.model, apiKey: ctx.apiKey, ...(ctx.signal ? { signal: ctx.signal } : {}),
       system: `Extract the single reservation from the document into the flat fields. ${hint} Omit any field that is truly absent.`,
       user: `Document:\n${text}`,
       schema,

@@ -155,6 +155,13 @@ export default function AdminStoragePanel(): React.ReactElement {
   }
   const { state, draft } = admin
 
+  if (state.backends.some(backend => backend.type === 'vercel-blob')) {
+    return <div className="rounded-xl border p-4 text-sm border-edge bg-surface-card text-content">
+      <p className="font-medium">Vercel Blob</p>
+      <p className="mt-1 text-content-muted">{t('storage.backends.envReadOnly')}</p>
+    </div>
+  }
+
   // Pure/cheap — recomputed every render so the migrate-prompt dialog (below)
   // never shows a stale candidate set while it's open (fix: migration prompt
   // staleness). moveAndSave recomputes independently at confirm time rather

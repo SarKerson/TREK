@@ -1,6 +1,8 @@
 import type { TranslationStrings } from '../types';
 
 const common: TranslationStrings = {
+  'common.serverlessLimitations':
+    'В этом бессерверном развёртывании недоступны постоянные плагины, фоновая автосинхронизация, полное резервное копирование и восстановление экземпляра, а также MCP. Планирование поездок и ручная синхронизация остаются доступны.',
   'common.save': 'Сохранить',
   'common.showMore': 'Показать больше',
   'common.showLess': 'Показать меньше',

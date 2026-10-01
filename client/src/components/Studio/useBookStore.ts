@@ -281,7 +281,9 @@ export function useBookStore(
     let cancelled = false
 
     const handler = (event: Record<string, unknown>) => {
-      if (event.type !== 'journey:book:saved') return
+      // Rejoining after a suspended/serverless connection also invalidates the
+      // snapshot. The local-work guards below still protect unsaved edits.
+      if (event.type !== 'journey:book:saved' && event.type !== 'book:joined') return
       if (event.journeyId !== journeyId) return
       if (hasLocalWork()) return
       // Already ours: the server excludes the saving socket, but a second tab

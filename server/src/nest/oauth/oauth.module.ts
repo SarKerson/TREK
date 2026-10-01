@@ -1,8 +1,8 @@
 import { RateLimitModule } from '../common/rate-limit.module';
 import { Module } from '@nestjs/common';
 import type { MiddlewareConsumer, NestModule } from '@nestjs/common';
-import { authorizationHandler } from '@modelcontextprotocol/sdk/server/auth/handlers/authorize';
-import { clientRegistrationHandler } from '@modelcontextprotocol/sdk/server/auth/handlers/register';
+import { authorizationHandler } from '@modelcontextprotocol/sdk/server/auth/handlers/authorize.js';
+import { clientRegistrationHandler } from '@modelcontextprotocol/sdk/server/auth/handlers/register.js';
 import { OauthPublicController } from './oauth-public.controller';
 import { OauthApiController } from './oauth-api.controller';
 import { OauthService } from './oauth.service';

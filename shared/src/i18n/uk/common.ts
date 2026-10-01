@@ -1,6 +1,8 @@
 import type { TranslationStrings } from '../types';
 
 const common: TranslationStrings = {
+  'common.serverlessLimitations':
+    'У цьому безсерверному розгортанні недоступні постійні плагіни, фонова автосинхронізація, повне резервне копіювання та відновлення екземпляра, а також MCP. Планування подорожей і ручна синхронізація залишаються доступними.',
   'common.save': 'Зберегти',
   'common.showMore': 'Показати більше',
   'common.showLess': 'Показати менше',

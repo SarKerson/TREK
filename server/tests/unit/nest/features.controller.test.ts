@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { FeaturesController } from '../../../src/nest/health/features.controller';
 import { HealthModule } from '../../../src/nest/health/health.module';
 import { KitineraryExtractorModule } from '../../../src/nest/booking-import/kitinerary-extractor.module';
@@ -20,7 +20,21 @@ function make(available: boolean, aiEnabled: boolean) {
   };
 }
 
+afterEach(() => vi.unstubAllEnvs());
+
 describe('FeaturesController (GET /api/health/features)', () => {
+  it('reports the serverless cuts and private upload capabilities', () => {
+    vi.stubEnv('VERCEL', '1');
+    expect(make(false, true).controller.features()).toEqual({
+      bookingImport: false, aiParsing: true,
+      runtimeCapabilities: {
+        persistentPlugins: false, backgroundAutosync: false,
+        instanceBackupRestore: false, mcp: false,
+        privateBlobUploads: true, multipartMaxBytes: 4_000_000,
+      },
+    });
+  });
+
   it('FEAT-001: reports both flags on', () => {
     const { controller } = make(true, true);
     expect(controller.features()).toEqual({ bookingImport: true, aiParsing: true });

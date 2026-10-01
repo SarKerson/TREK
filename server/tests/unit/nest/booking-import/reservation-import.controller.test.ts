@@ -80,3 +80,14 @@ describe('ReservationImportController upload options', () => {
     expect(multer.limits).toEqual({ fileSize: 10 * 1024 * 1024, files: 5 });
   });
 });
+
+
+describe('ReservationImportController.jobStatus', () => {
+  it('only returns a durable result under its original trip URL', async () => {
+    const jobs = { get: vi.fn(() => ({ tripId: '7', status: 'done', done: 1, total: 1, result: { items: [], warnings: [] } })) };
+    const controller = new ReservationImportController(undefined as never, jobs as never, undefined as never);
+    await expect(controller.jobStatus(user, 'job-1', '7')).resolves.toMatchObject({ status: 'done' });
+    expect(await status(() => controller.jobStatus(user, 'job-1', '8'))).toBe(404);
+    expect(jobs.get).toHaveBeenCalledWith('job-1', user.id);
+  });
+});

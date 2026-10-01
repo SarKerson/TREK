@@ -12,11 +12,11 @@ vi.mock('../../../src/app-config', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../src/app-config')>();
   return { ...actual, getMcpSafeUrl: h.getMcpSafeUrl };
 });
-vi.mock('@modelcontextprotocol/sdk/server/auth/router', () => ({
+vi.mock('@modelcontextprotocol/sdk/server/auth/router.js', () => ({
   mcpAuthMetadataRouter: vi.fn(() => h.metaRouter),
 }));
 
-import { mcpAuthMetadataRouter } from '@modelcontextprotocol/sdk/server/auth/router';
+import { mcpAuthMetadataRouter } from '@modelcontextprotocol/sdk/server/auth/router.js';
 import { DiscoveryMetadataService } from '../../../src/nest/platform/discovery-metadata.service';
 import {
   MCP_METADATA_MIDDLEWARE,

@@ -1,7 +1,7 @@
 import type { McpAttachOptions, McpContext, McpRegistry } from '../../../src/nest-mcp';
-import { Client } from '@modelcontextprotocol/sdk/client/index';
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 /** Test context shape — stands in for whatever a host app augments McpContext with. */
 export interface TestCtx {

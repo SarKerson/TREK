@@ -1,6 +1,8 @@
 import type { TranslationStrings } from '../types';
 
 const common: TranslationStrings = {
+  'common.serverlessLimitations':
+    'Este despliegue sin servidor no incluye plugins persistentes, sincronización automática en segundo plano, copia o restauración completa de la instancia ni MCP. La planificación de viajes y la sincronización manual siguen disponibles.',
   'common.save': 'Guardar',
   'common.showMore': 'Ver más',
   'common.showLess': 'Ver menos',

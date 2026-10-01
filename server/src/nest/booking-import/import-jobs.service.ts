@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { isVercelRuntime } from '../../runtime';
+import { ImportJobsRepository, IMPORT_JOB_BUDGET_MS, IMPORT_JOB_TIMEOUT } from './import-jobs.repository';
+import { HttpException, Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { RealtimeService } from '../realtime/realtime.service';
 import { BookingImportService } from './booking-import.service';
@@ -36,10 +38,15 @@ export class ImportJobsService {
   /** Tail of each user's job chain — parses run one at a time per user, not all at once. */
   private readonly chains = new Map<number, Promise<void>>();
 
-  constructor(private readonly bookingImport: BookingImportService, private readonly realtime: RealtimeService) {}
+  constructor(
+    private readonly bookingImport: BookingImportService,
+    private readonly realtime: RealtimeService,
+    private readonly repository: ImportJobsRepository,
+  ) {}
 
   /** Create a job and queue it behind the user's other parses; returns the job id at once. */
   start(tripId: string, files: Express.Multer.File[], mode: BookingImportMode, userId: number): string {
+    if (isVercelRuntime()) throw new Error('Use startInRequest for serverless imports');
     const id = randomUUID();
     const job: ImportJob = { id, tripId, userId, status: 'running', done: 0, total: files.length, createdAt: Date.now() };
     this.jobs.set(id, job);
@@ -55,8 +62,49 @@ export class ImportJobsService {
   }
 
   get(id: string, userId: number): ImportJob | undefined {
+    if (isVercelRuntime()) return this.repository.get(id, userId);
     const job = this.jobs.get(id);
     return job && job.userId === userId ? job : undefined;
+  }
+
+  /** Vercel keeps the invocation open until its durable result is committed. */
+  async startInRequest(tripId: string, files: Express.Multer.File[], mode: BookingImportMode, userId: number): Promise<string> {
+    const job: ImportJob = {
+      id: randomUUID(), tripId, userId, status: 'running', done: 0,
+      total: files.length, createdAt: Date.now(),
+    };
+    if (!this.repository.create(job)) {
+      throw new HttpException({ error: 'An import is already running. Wait for it to finish before starting another.' }, 409);
+    }
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => {
+        controller.abort(new Error(IMPORT_JOB_TIMEOUT));
+        reject(new Error(IMPORT_JOB_TIMEOUT));
+      }, IMPORT_JOB_BUDGET_MS);
+    });
+    try {
+      const result = await Promise.race([
+        this.bookingImport.preview(files, mode, userId, (done, total, fileName) => {
+          if (job.status !== 'running' || controller.signal.aborted) return;
+          job.done = done;
+          this.repository.progress(job);
+          this.push(job, 'import:progress', { status: 'running', done, total, fileName });
+        }, controller.signal),
+        deadline,
+      ]);
+      job.status = 'done';
+      job.result = result;
+      if (this.repository.finish(job)) this.push(job, 'import:done', { result });
+    } catch (error) {
+      job.status = 'error';
+      job.error = error instanceof Error ? error.message : String(error);
+      if (this.repository.finish(job)) this.push(job, 'import:error', { message: job.error });
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    return job.id;
   }
 
   private async run(job: ImportJob, files: Express.Multer.File[], mode: BookingImportMode): Promise<void> {

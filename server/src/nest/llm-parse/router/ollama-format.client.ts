@@ -16,6 +16,7 @@ import { safeFetchLlm } from '../../../utils/ssrfGuard';
 import { readEnv } from '../../../app-config';
 
 export interface EnforcedExtractInput {
+  signal?: AbortSignal;
   /** Ollama base URL — accepts the addon's `…/v1` form; the `/v1` suffix is stripped. */
   baseUrl: string;
   model: string;
@@ -71,7 +72,7 @@ export async function extractEnforced(input: EnforcedExtractInput): Promise<Reco
     // while still allowing a local/LAN Ollama.
     res = await safeFetchLlm(url, {
       method: 'POST',
-      signal: controller.signal,
+      signal: input.signal ? AbortSignal.any([controller.signal, input.signal]) : controller.signal,
       headers: {
         'content-type': 'application/json',
         ...(input.apiKey ? { authorization: `Bearer ${input.apiKey}` } : {}),

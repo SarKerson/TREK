@@ -59,7 +59,7 @@ export class AnthropicClient implements LlmExtractionClient {
       // metadata endpoint, while still allowing a local/LAN gateway.
       res = await safeFetchLlm(url, {
         method: 'POST',
-        signal: controller.signal,
+        signal: input.signal ? AbortSignal.any([controller.signal, input.signal]) : controller.signal,
         headers: {
           'content-type': 'application/json',
           'x-api-key': input.apiKey ?? '',

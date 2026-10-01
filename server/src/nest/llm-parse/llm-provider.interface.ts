@@ -6,6 +6,8 @@ export interface LlmExtractionFile {
 
 /** Everything a provider client needs to extract reservations from one document. */
 export interface LlmExtractionInput {
+  /** Cancels an invocation-wide parse deadline, including provider requests. */
+  signal?: AbortSignal;
   /** System instructions enumerating the schema.org shape (see llm-prompt.ts). */
   prompt: string;
   /** JSON Schema describing `{ reservations: KiReservation[] }`. */

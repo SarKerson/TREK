@@ -159,6 +159,12 @@ export class JourneyDomainService {
     return c?.role === 'editor' || c?.role === 'owner';
   }
 
+  /** Upload grants must check the entry's journey before accepting any bytes. */
+  canEditEntry(entryId: number, userId: number): boolean {
+    const entry = this.db.get<{ journey_id: number }>('SELECT journey_id FROM journey_entries WHERE id = ?', entryId);
+    return !!entry && this.canEdit(entry.journey_id, userId);
+  }
+
   // ── Journey CRUD ─────────────────────────────────────────────────────────
 
   listJourneys(userId: number) {

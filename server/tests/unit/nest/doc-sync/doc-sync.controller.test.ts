@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterAll, afterEach } from 'vitest';
 import { HttpException, Logger } from '@nestjs/common';
 import type { Request } from 'express';
 
@@ -195,6 +195,8 @@ beforeAll(() => {
 afterAll(() => {
   testDb.close();
 });
+
+afterEach(() => vi.unstubAllEnvs());
 
 beforeEach(() => {
   testDb.exec('DELETE FROM document_sync_items; DELETE FROM trip_document_links; DELETE FROM document_connections; DELETE FROM trip_files');
@@ -584,6 +586,18 @@ describe('the scope picker', () => {
 });
 
 describe('creating a binding', () => {
+  it('keeps serverless manual binding in-request without registering a dead webhook', async () => {
+    vi.stubEnv('VERCEL', '1');
+    const conn = await storedPaperless();
+    const link = await controller.createLink(
+      String(tripId), owner, linkBody(conn.id, { syncEnabled: false }),
+      makeReq({ 'x-forwarded-proto': 'https', 'x-forwarded-host': 'trek.example' }),
+    );
+    expect(link).toMatchObject({ syncEnabled: false, webhookUrl: null });
+    expect(paperless.registerWebhook).not.toHaveBeenCalled();
+    expect(sync.syncLink).toHaveBeenCalled();
+  });
+
   it('subscribes at the provider and remembers the subscription id', async () => {
     const conn = await storedPaperless();
     const link = (await controller.createLink(

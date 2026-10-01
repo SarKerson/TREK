@@ -4,7 +4,7 @@
  * Passwords are stored as bcrypt hashes (cost factor 4 for speed in tests).
  */
 
-import Database from 'better-sqlite3';
+import type { DbConnection } from '../../src/db/adapter';
 import bcrypt from 'bcryptjs';
 import { encryptMfaSecret } from '../../src/nest/common/crypto/mfaCrypto';
 import { encrypt_api_key } from '../../src/nest/common/crypto/apiKeyCrypto';
@@ -27,7 +27,7 @@ export interface TestUser {
 }
 
 export function createUser(
-  db: Database.Database,
+  db: DbConnection,
   overrides: Partial<{ username: string; email: string; password: string; role: 'admin' | 'user' }> = {}
 ): { user: TestUser; password: string } {
   _userSeq++;
@@ -46,7 +46,7 @@ export function createUser(
 }
 
 export function createAdmin(
-  db: Database.Database,
+  db: DbConnection,
   overrides: Partial<{ username: string; email: string; password: string }> = {}
 ): { user: TestUser; password: string } {
   return createUser(db, { ...overrides, role: 'admin' });
@@ -58,7 +58,7 @@ export function createAdmin(
  */
 const KNOWN_MFA_SECRET = 'JBSWY3DPEHPK3PXP'; // fixed base32 secret for deterministic tests
 export function createUserWithMfa(
-  db: Database.Database,
+  db: DbConnection,
   overrides: Partial<{ username: string; email: string; password: string; role: 'admin' | 'user' }> = {}
 ): { user: TestUser; password: string; totpSecret: string } {
   const { user, password } = createUser(db, overrides);
@@ -83,7 +83,7 @@ export interface TestTrip {
 }
 
 export function createTrip(
-  db: Database.Database,
+  db: DbConnection,
   userId: number,
   overrides: Partial<{ title: string; start_date: string; end_date: string; description: string }> = {}
 ): TestTrip {
@@ -125,7 +125,7 @@ export interface TestDay {
 }
 
 export function createDay(
-  db: Database.Database,
+  db: DbConnection,
   tripId: number,
   overrides: Partial<{ date: string; title: string; day_number: number }> = {}
 ): TestDay {
@@ -152,7 +152,7 @@ export interface TestPlace {
 }
 
 export function createPlace(
-  db: Database.Database,
+  db: DbConnection,
   tripId: number,
   overrides: Partial<{ name: string; lat: number; lng: number; category_id: number; description: string }> = {}
 ): TestPlace {
@@ -177,7 +177,7 @@ export function createPlace(
 // Trip Members
 // ---------------------------------------------------------------------------
 
-export function addTripMember(db: Database.Database, tripId: number, userId: number): void {
+export function addTripMember(db: DbConnection, tripId: number, userId: number): void {
   db.prepare('INSERT OR IGNORE INTO trip_members (trip_id, user_id) VALUES (?, ?)').run(tripId, userId);
 }
 
@@ -194,7 +194,7 @@ export interface TestBudgetItem {
 }
 
 export function createBudgetItem(
-  db: Database.Database,
+  db: DbConnection,
   tripId: number,
   overrides: Partial<{ name: string; category: string; total_price: number }> = {}
 ): TestBudgetItem {
@@ -222,7 +222,7 @@ export interface TestPackingItem {
 }
 
 export function createPackingItem(
-  db: Database.Database,
+  db: DbConnection,
   tripId: number,
   overrides: Partial<{ name: string; category: string }> = {}
 ): TestPackingItem {
@@ -244,7 +244,7 @@ export interface TestReservation {
 }
 
 export function createReservation(
-  db: Database.Database,
+  db: DbConnection,
   tripId: number,
   overrides: Partial<{ title: string; type: string; day_id: number }> = {}
 ): TestReservation {
@@ -280,7 +280,7 @@ export interface TestDayNote {
 }
 
 export function createDayNote(
-  db: Database.Database,
+  db: DbConnection,
   dayId: number,
   tripId: number,
   overrides: Partial<{ text: string; time: string; icon: string; sort_order: number }> = {}
@@ -307,7 +307,7 @@ export interface TestCollabNote {
 }
 
 export function createCollabNote(
-  db: Database.Database,
+  db: DbConnection,
   tripId: number,
   userId: number,
   overrides: Partial<{ title: string; content: string; category: string; color: string }> = {}
@@ -339,7 +339,7 @@ export interface TestTodoItem {
 }
 
 export function createTodoItem(
-  db: Database.Database,
+  db: DbConnection,
   tripId: number,
   overrides: Partial<{ name: string; category: string; checked: number }> = {}
 ): TestTodoItem {
@@ -364,7 +364,7 @@ export interface TestDayAssignment {
 }
 
 export function createDayAssignment(
-  db: Database.Database,
+  db: DbConnection,
   dayId: number,
   placeId: number,
   overrides: Partial<{ order_index: number; notes: string }> = {}
@@ -392,7 +392,7 @@ export interface TestBucketListItem {
 }
 
 export function createBucketListItem(
-  db: Database.Database,
+  db: DbConnection,
   userId: number,
   overrides: Partial<{ name: string; lat: number; lng: number; country_code: string; notes: string }> = {}
 ): TestBucketListItem {
@@ -414,7 +414,7 @@ export function createBucketListItem(
 // ---------------------------------------------------------------------------
 
 export function createVisitedCountry(
-  db: Database.Database,
+  db: DbConnection,
   userId: number,
   countryCode: string
 ): void {
@@ -436,7 +436,7 @@ export interface TestDayAccommodation {
 }
 
 export function createDayAccommodation(
-  db: Database.Database,
+  db: DbConnection,
   tripId: number,
   placeId: number,
   startDayId: number,
@@ -470,7 +470,7 @@ export interface TestMcpToken {
 }
 
 export function createMcpToken(
-  db: Database.Database,
+  db: DbConnection,
   userId: number,
   overrides: Partial<{ name: string; rawToken: string }> = {}
 ): TestMcpToken {
@@ -488,7 +488,7 @@ export function createMcpToken(
 // ---------------------------------------------------------------------------
 
 export function createInviteToken(
-  db: Database.Database,
+  db: DbConnection,
   overrides: Partial<{ token: string; max_uses: number; expires_at: string; created_by: number }> = {}
 ): TestInviteToken {
   const token = overrides.token ?? `test-invite-${Date.now()}`;
@@ -519,18 +519,18 @@ export function createInviteToken(
 // ---------------------------------------------------------------------------
 
 /** Upsert a key/value pair into app_settings. */
-export function setAppSetting(db: Database.Database, key: string, value: string): void {
+export function setAppSetting(db: DbConnection, key: string, value: string): void {
   db.prepare('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)').run(key, value);
 }
 
 /** Set the active notification channels (e.g. 'email', 'webhook', 'email,webhook', 'none'). */
-export function setNotificationChannels(db: Database.Database, channels: string): void {
+export function setNotificationChannels(db: DbConnection, channels: string): void {
   setAppSetting(db, 'notification_channels', channels);
 }
 
 /** Explicitly disable a per-user notification preference for a given event+channel combo. */
 export function disableNotificationPref(
-  db: Database.Database,
+  db: DbConnection,
   userId: number,
   eventType: string,
   channel: string
@@ -555,7 +555,7 @@ export interface TestTripPhoto {
 }
 
 export function addTripPhoto(
-  db: Database.Database,
+  db: DbConnection,
   tripId: number,
   userId: number,
   assetId: string,
@@ -591,7 +591,7 @@ export interface TestAlbumLink {
 }
 
 export function addAlbumLink(
-  db: Database.Database,
+  db: DbConnection,
   tripId: number,
   userId: number,
   provider: string,
@@ -605,7 +605,7 @@ export function addAlbumLink(
 }
 
 export function setImmichCredentials(
-  db: Database.Database,
+  db: DbConnection,
   userId: number,
   url: string,
   apiKey: string
@@ -615,7 +615,7 @@ export function setImmichCredentials(
 }
 
 export function setSynologyCredentials(
-  db: Database.Database,
+  db: DbConnection,
   userId: number,
   url: string,
   username: string,
@@ -630,7 +630,7 @@ export function setSynologyCredentials(
 // ---------------------------------------------------------------------------
 
 export function createCategory(
-  db: Database.Database,
+  db: DbConnection,
   overrides: { name?: string; color?: string; icon?: string; user_id?: number | null } = {}
 ) {
   const name = overrides.name ?? `Test Category ${++_categorySeq}`;
@@ -646,7 +646,7 @@ export function createCategory(
 // ---------------------------------------------------------------------------
 
 export function createTag(
-  db: Database.Database,
+  db: DbConnection,
   userId: number,
   overrides: { name?: string; color?: string } = {}
 ) {
@@ -674,7 +674,7 @@ export interface TestJourney {
 }
 
 export function createJourney(
-  db: Database.Database,
+  db: DbConnection,
   userId: number,
   overrides: Partial<{ title: string; subtitle: string; status: string }> = {}
 ): TestJourney {
@@ -708,7 +708,7 @@ export interface TestJourneyEntry {
 }
 
 export function createJourneyEntry(
-  db: Database.Database,
+  db: DbConnection,
   journeyId: number,
   authorId: number,
   overrides: Partial<{ type: string; entry_date: string; title: string; story: string; location_name: string; mood: string; weather: string; stats_excluded: number }> = {}
@@ -733,7 +733,7 @@ export function createJourneyEntry(
 }
 
 export function addJourneyContributor(
-  db: Database.Database,
+  db: DbConnection,
   journeyId: number,
   userId: number,
   role: 'editor' | 'viewer' = 'editor'
@@ -743,7 +743,7 @@ export function addJourneyContributor(
   ).run(journeyId, userId, role, Date.now());
 }
 
-export function linkTripToJourney(db: Database.Database, journeyId: number, tripId: number): void {
+export function linkTripToJourney(db: DbConnection, journeyId: number, tripId: number): void {
   // The column is added_at, not linked_at — this helper had no callers until
   // #1973 and so had never actually run against the schema.
   db.prepare(

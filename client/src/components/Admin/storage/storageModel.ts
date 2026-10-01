@@ -22,7 +22,7 @@ export type StateBackend = StorageAdminState['backends'][number]
  */
 export function settingsDocumentOf(state: StorageAdminState): StorageConfigPut {
   return {
-    backends: state.backends.filter((b) => b.source === 'settings').map(asWireBackend),
+    backends: state.backends.filter((b) => b.source === 'settings' && b.type !== 'vercel-blob').map(asWireBackend),
     categories: Object.fromEntries(
       Object.entries(state.categories)
         .filter(([, entry]) => entry.source === 'settings')
@@ -38,6 +38,7 @@ export function settingsDocumentOf(state: StorageAdminState): StorageConfigPut {
  * the cast re-attaches the discriminated-union type the loose state record dropped.
  */
 export function asWireBackend(backend: Pick<StateBackend, 'name' | 'type' | 'options'>): StorageBackend {
+  if (backend.type === 'vercel-blob') throw new Error('Vercel Blob storage is managed by the deployment')
   return { name: backend.name, type: backend.type, options: backend.options } as StorageBackend
 }
 
@@ -143,7 +144,7 @@ export function mirrorProbeTargets(
       const draftMatch = draft.backends.find((b) => b.name === name)
       if (draftMatch) return draftMatch
       const stateMatch = state.backends.find((b) => b.name === name)
-      return stateMatch ? asWireBackend(stateMatch) : null
+      return stateMatch && stateMatch.type !== 'vercel-blob' ? asWireBackend(stateMatch) : null
     })
     .filter((b): b is StorageBackend => b !== null)
 }
@@ -161,7 +162,7 @@ export function foldBackends(
   // unless a draft row overrides the name; settings rows from the draft.
   const base: Array<Pick<FoldedBackendRow, 'name' | 'type' | 'source' | 'backend'>> = []
   for (const b of state.backends) {
-    if (b.type === 'mirror') continue // mirrors fold below; the draft owns them
+    if (b.type === 'mirror' || b.type === 'vercel-blob') continue // managed Blob never enters an editable row
     if (draftNames.includes(b.name)) continue
     if (b.source === 'settings') continue // removed from the draft, pending save
     base.push({ name: b.name, type: b.type, source: b.source, backend: asWireBackend(b) })

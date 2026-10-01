@@ -38,12 +38,14 @@ export class LlmParseService {
     return this.llmConfig.resolve(userId) !== null;
   }
 
-  async parse(file: { buffer: Buffer; originalName: string }, userId: number): Promise<LlmParseResult> {
+  async parse(file: { buffer: Buffer; originalName: string }, userId: number, signal?: AbortSignal): Promise<LlmParseResult> {
+    signal?.throwIfAborted();
     const config = this.llmConfig.resolve(userId);
     if (!config) return { kiItems: [], warnings: ['AI parsing is not configured'] };
 
     const warnings: string[] = [];
     const input: LlmExtractionInput = {
+      ...(signal ? { signal } : {}),
       prompt: buildSystemPrompt(),
       jsonSchema: KI_RESERVATION_JSON_SCHEMA,
       model: config.model,
@@ -92,6 +94,7 @@ export class LlmParseService {
       };
     }
 
+    signal?.throwIfAborted();
     // Local provider (Ollama): go through the layered extraction router — vendor
     // templates → decompose + grammar-enforced per-reservation extraction → validate
     // + repair. Far more reliable on small CPU models than the single-shot path below
@@ -102,6 +105,7 @@ export class LlmParseService {
           baseUrl: config.baseUrl ?? 'http://localhost:11434/v1',
           model: config.model,
           apiKey: config.apiKey,
+          ...(signal ? { signal } : {}),
         });
         return { kiItems: routed.kiItems, warnings: [...warnings, ...routed.warnings] };
       } catch (err) {

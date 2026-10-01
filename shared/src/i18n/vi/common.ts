@@ -1,6 +1,8 @@
 import type { TranslationStrings } from '../types';
 
 const common: TranslationStrings = {
+  'common.serverlessLimitations':
+    'Bản triển khai không máy chủ này không hỗ trợ plugin chạy thường trực, đồng bộ tự động trong nền, sao lưu hoặc khôi phục toàn bộ phiên bản hay MCP. Tính năng lập kế hoạch chuyến đi và đồng bộ thủ công vẫn khả dụng.',
   'common.datepicker.prevMonth': 'Tháng trước',
   'common.datepicker.nextMonth': 'Tháng sau',
   'common.datepicker.prevYear': 'Năm trước',

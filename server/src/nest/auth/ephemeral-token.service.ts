@@ -1,6 +1,8 @@
-import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { DatabaseService } from '../database/database.service';
+import { Injectable, Optional, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import {
   createEphemeralToken,
+  configureEphemeralTokenDatabase,
   consumeEphemeralToken,
   consumeEphemeralTokenWithMeta,
   startTokenCleanup,
@@ -33,6 +35,10 @@ import {
  */
 @Injectable()
 export class EphemeralTokenService implements OnModuleInit, OnModuleDestroy {
+  constructor(@Optional() db?: DatabaseService) {
+    if (db) configureEphemeralTokenDatabase(db);
+  }
+
   onModuleInit(): void {
     startTokenCleanup();
   }

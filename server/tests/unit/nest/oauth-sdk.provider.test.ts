@@ -13,23 +13,23 @@ const sdk = vi.hoisted(() => ({
   authorizeHandler: vi.fn(),
   registerHandler: vi.fn(),
 }));
-vi.mock('@modelcontextprotocol/sdk/server/auth/handlers/authorize', () => ({
+vi.mock('@modelcontextprotocol/sdk/server/auth/handlers/authorize.js', () => ({
   authorizationHandler: vi.fn(() => sdk.authorizeHandler),
 }));
-vi.mock('@modelcontextprotocol/sdk/server/auth/handlers/register', () => ({
+vi.mock('@modelcontextprotocol/sdk/server/auth/handlers/register.js', () => ({
   clientRegistrationHandler: vi.fn(() => sdk.registerHandler),
 }));
 
-import { authorizationHandler } from '@modelcontextprotocol/sdk/server/auth/handlers/authorize';
-import { clientRegistrationHandler } from '@modelcontextprotocol/sdk/server/auth/handlers/register';
-import { InvalidClientMetadataError, ServerError } from '@modelcontextprotocol/sdk/server/auth/errors';
+import { authorizationHandler } from '@modelcontextprotocol/sdk/server/auth/handlers/authorize.js';
+import { clientRegistrationHandler } from '@modelcontextprotocol/sdk/server/auth/handlers/register.js';
+import { InvalidClientMetadataError, ServerError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
 import { TrekClientsStore, TrekOAuthProvider } from '../../../src/nest/oauth/oauth-sdk.provider';
 import { OauthModule } from '../../../src/nest/oauth/oauth.module';
 import type { AddonsService } from '../../../src/nest/addons/addons.service';
 import { ALL_SCOPES, DEFAULT_CLIENT_SCOPES, OPT_IN_ONLY_SCOPES } from '../../../src/mcp/scopes';
 import type { OauthService } from '../../../src/nest/oauth/oauth.service';
 import type { AuditService } from '../../../src/nest/audit/audit.service';
-import type { OAuthClientInformationFull } from '@modelcontextprotocol/sdk/shared/auth';
+import type { OAuthClientInformationFull } from '@modelcontextprotocol/sdk/shared/auth.js';
 
 function makeOauth(overrides: Partial<Record<keyof OauthService, unknown>> = {}) {
   return {

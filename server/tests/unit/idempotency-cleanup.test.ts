@@ -25,13 +25,13 @@ function insertKey(key: string, ageSeconds: number): void {
 }
 
 beforeEach(() => {
-  db.pragma('foreign_keys = OFF'); // fixtures reference a user we don't seed here
+  db.exec('PRAGMA foreign_keys = OFF'); // fixtures reference a user we don't seed here
   db.prepare('DELETE FROM idempotency_keys').run();
 });
 
 afterEach(() => {
   db.prepare('DELETE FROM idempotency_keys').run();
-  db.pragma('foreign_keys = ON');
+  db.exec('PRAGMA foreign_keys = ON');
   delete process.env.IDEMPOTENCY_TTL_SECONDS;
 });
 

@@ -1,3 +1,4 @@
+import { isVercelRuntime } from '../runtime';
 import { readEnv } from '../app-config';
 import { sessions } from './sessionManager';
 import { invalidateMcpSessions, revokeUserSessions, revokeUserSessionsForClient } from './sessionManager';
@@ -41,7 +42,7 @@ export function isRateLimited(userId: number, clientId: string | null): boolean 
   return entry.count > RATE_LIMIT_MAX;
 }
 
-const sessionSweepInterval = setInterval(() => {
+const sessionSweepInterval = isVercelRuntime() ? undefined : setInterval(() => {
   const cutoff = Date.now() - SESSION_TTL_MS;
   let cleaned = 0;
   for (const [sid, session] of sessions) {
@@ -62,7 +63,7 @@ const sessionSweepInterval = setInterval(() => {
 }, 60 * 1000); // sweep every 1 minute
 
 // Prevent the interval from keeping the process alive if nothing else is running
-sessionSweepInterval.unref();
+sessionSweepInterval?.unref();
 
 /** Close all active MCP sessions (call during graceful shutdown). */
 export function closeMcpSessions(): void {

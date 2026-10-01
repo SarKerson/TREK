@@ -1,6 +1,8 @@
 import type { TranslationStrings } from '../types';
 
 const common: TranslationStrings = {
+  'common.serverlessLimitations':
+    '此无服务器部署不提供持久运行的插件、后台自动同步、完整实例备份或恢复以及 MCP。核心行程规划和手动同步仍可使用。',
   'common.save': '保存',
   'common.showMore': '显示更多',
   'common.showLess': '收起',

@@ -10,6 +10,9 @@ import { StorageAdminService } from './storage-admin.service';
 import { StorageAdminController } from './storage-admin.controller';
 import { StorageStatsService } from './storage-stats.service';
 import { StorageUsageScanJob } from './storage-usage-scan.job';
+import { StagedUploadsService } from './staged-uploads.service';
+import { StagedUploadsController } from './staged-uploads.controller';
+import { UploadIntentGcService } from './upload-intent-gc.service';
 
 /**
  * Storage container: registry (config), facade (byte-paths), admin surface.
@@ -26,7 +29,7 @@ import { StorageUsageScanJob } from './storage-usage-scan.job';
  */
 @Module({
   imports: [AppConfigModule, AuditModule, SchedulingModule],
-  controllers: [StorageAdminController],
+  controllers: [StorageAdminController, StagedUploadsController],
   providers: [
     StorageRegistryService,
     StorageService,
@@ -35,7 +38,9 @@ import { StorageUsageScanJob } from './storage-usage-scan.job';
     StorageJobsService,
     StorageStatsService,
     StorageUsageScanJob,
+    StagedUploadsService,
+    UploadIntentGcService,
   ],
-  exports: [StorageService, StorageEventsService],
+  exports: [StorageService, StorageEventsService, StagedUploadsService, UploadIntentGcService],
 })
 export class StorageModule {}

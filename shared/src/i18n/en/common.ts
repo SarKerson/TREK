@@ -1,6 +1,8 @@
 import type { TranslationStrings } from '../types';
 
 const common: TranslationStrings = {
+  'common.serverlessLimitations':
+    'This serverless deployment has no persistent plugins, background autosync, full-instance backup or restore, or MCP. Core trip planning and manual sync remain available.',
   'common.save': 'Save',
   'common.showMore': 'Show more',
   'common.showLess': 'Show less',

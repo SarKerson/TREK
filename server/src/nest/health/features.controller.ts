@@ -1,9 +1,12 @@
-import { Controller, Get, Res } from '@nestjs/common';
-import type { Response } from 'express';
-import { KitineraryExtractorService } from '../booking-import/kitinerary-extractor.service';
-import { AddonsService } from '../addons/addons.service';
 import { ADDON_IDS } from '../../addons';
+import { isVercelRuntime } from '../../runtime';
+import { AddonsService } from '../addons/addons.service';
 import { Public } from '../auth/public.decorator';
+import { KitineraryExtractorService } from '../booking-import/kitinerary-extractor.service';
+import { Controller, Get, Res } from '@nestjs/common';
+import type { ServerFeatures } from '@trek/shared';
+
+import type { Response } from 'express';
 
 /** Exposes the container probe and the server feature flags consumed by the
  *  frontend to show/hide optional UI. */
@@ -25,9 +28,21 @@ export class FeaturesController {
   }
 
   @Get('features')
-  features() {
+  features(): ServerFeatures {
     return {
       bookingImport: this.extractor.isAvailable(),
+      ...(isVercelRuntime()
+        ? {
+            runtimeCapabilities: {
+              persistentPlugins: false,
+              backgroundAutosync: false,
+              instanceBackupRestore: false,
+              mcp: false,
+              privateBlobUploads: true,
+              multipartMaxBytes: 4_000_000,
+            },
+          }
+        : {}),
       // Addon-level flag (per-user config availability is reported per-file in
       // the preview response). Drives whether the client shows AI affordances.
       aiParsing: this.addons.isAddonEnabled(ADDON_IDS.LLM_PARSING),

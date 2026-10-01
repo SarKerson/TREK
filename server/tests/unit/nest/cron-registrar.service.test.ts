@@ -56,6 +56,16 @@ describe('CronRegistrarService', () => {
     else process.env.TZ = originalTz;
   });
 
+  it('does not schedule jobs on Vercel, even outside tests', () => {
+    vi.stubEnv('VERCEL', '1');
+    try {
+      const { registrar } = makeRegistrar(false);
+      expect(registrar.isEnabled()).toBe(false);
+      expect(registrar.register('job', '* * * * *', () => {})).toBe(false);
+      expect(h.jobs).toHaveLength(0);
+    } finally { vi.unstubAllEnvs(); }
+  });
+
   it('CRONREG-001 — refuses to schedule under the test gate (register returns false, nothing created)', () => {
     const { registrar, registry } = makeRegistrar(true);
     expect(registrar.isEnabled()).toBe(false);

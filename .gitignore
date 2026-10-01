@@ -70,3 +70,5 @@ minio-licence.key
 
 .run
 .full-review
+.vercel
+.env*

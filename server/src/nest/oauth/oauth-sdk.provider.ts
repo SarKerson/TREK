@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import type { Response } from 'express';
-import type { OAuthServerProvider, AuthorizationParams } from '@modelcontextprotocol/sdk/server/auth/provider';
-import type { OAuthClientInformationFull, OAuthTokenRevocationRequest, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth';
-import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types';
-import type { OAuthRegisteredClientsStore } from '@modelcontextprotocol/sdk/server/auth/clients';
-import { InvalidClientMetadataError, ServerError } from '@modelcontextprotocol/sdk/server/auth/errors';
+import type { OAuthServerProvider, AuthorizationParams } from '@modelcontextprotocol/sdk/server/auth/provider.js';
+import type { OAuthClientInformationFull, OAuthTokenRevocationRequest, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js';
+import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
+import type { OAuthRegisteredClientsStore } from '@modelcontextprotocol/sdk/server/auth/clients.js';
+import { InvalidClientMetadataError, ServerError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
 import { OauthService } from './oauth.service';
 import { classifyRedirectUri } from './oauth.helpers';
 import { AuditService } from '../audit/audit.service';

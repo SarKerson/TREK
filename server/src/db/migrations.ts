@@ -4,13 +4,13 @@ import { encrypt_api_key } from '../nest/common/crypto/apiKeyCrypto';
 import { seedDocumentProviders } from './document-provider-seed';
 import { reseatBookedNights } from './reseat-booked-nights';
 
-import Database from 'better-sqlite3';
+import type { DbConnection } from './adapter';
 import fs from 'fs';
 import path from 'path';
 import zlib from 'zlib';
 
 /** Returns true if any collision was encountered (renamed row). */
-export function trimUserWhitespace(db: Database.Database): boolean {
+export function trimUserWhitespace(db: DbConnection): boolean {
   type DirtyRow = { id: number; username?: string; email?: string };
   let hadCollision = false;
 
@@ -70,22 +70,7 @@ export function trimUserWhitespace(db: Database.Database): boolean {
   return hadCollision;
 }
 
-function runMigrations(db: Database.Database): void {
-  db.exec('CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)');
-  const versionRow = db.prepare('SELECT version FROM schema_version').get() as { version: number } | undefined;
-  let currentVersion = versionRow?.version ?? 0;
-
-  if (currentVersion === 0) {
-    const hasUnsplash = db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = 'unsplash_api_key'").get();
-    if (hasUnsplash) {
-      currentVersion = 19;
-      db.prepare('INSERT INTO schema_version (version) VALUES (?)').run(currentVersion);
-      console.log('[DB] Schema already up-to-date, setting version to', currentVersion);
-    } else {
-      db.prepare('INSERT INTO schema_version (version) VALUES (?)').run(0);
-    }
-  }
-
+function buildMigrations(db: DbConnection) {
   type Migration = (() => void) | { raw: () => void };
   const migrations: Migration[] = [
     () => db.exec('ALTER TABLE users ADD COLUMN unsplash_api_key TEXT'),
@@ -5285,7 +5270,125 @@ function runMigrations(db: Database.Database): void {
         END
       `);
     },
+    // Shared coordination for stateless instances: no request-time schema writes.
+    () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS realtime_events (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, origin TEXT NOT NULL,
+          scope TEXT NOT NULL, target_id INTEGER NOT NULL, payload TEXT NOT NULL,
+          exclude_sid INTEGER, only_user_id INTEGER, created_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_realtime_events_created ON realtime_events(created_at);
+        CREATE TABLE IF NOT EXISTS ephemeral_tokens (
+          token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL,
+          purpose TEXT NOT NULL, expires_at INTEGER NOT NULL, pv INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS idx_ephemeral_tokens_expiry ON ephemeral_tokens(expires_at);
+      `);
+    },
+    // Shared single-use auth state and presence survive serverless cold starts.
+    () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS auth_ephemeral_state (
+          namespace TEXT NOT NULL, key_hash TEXT NOT NULL, value TEXT NOT NULL,
+          expires_at INTEGER NOT NULL, PRIMARY KEY(namespace, key_hash)
+        );
+        CREATE INDEX IF NOT EXISTS idx_auth_ephemeral_state_expiry ON auth_ephemeral_state(expires_at);
+        CREATE TABLE IF NOT EXISTS auth_rate_limits (
+          key_hash TEXT PRIMARY KEY, count INTEGER NOT NULL, expires_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_auth_rate_limits_expiry ON auth_rate_limits(expires_at);
+        CREATE TABLE IF NOT EXISTS realtime_presence (
+          socket_id INTEGER NOT NULL, scope TEXT NOT NULL, target_id INTEGER NOT NULL,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          expires_at INTEGER NOT NULL, pv INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY(socket_id, scope, target_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_realtime_presence_expiry ON realtime_presence(expires_at);
+      `);
+    },
+    // Direct-upload intent ownership and idempotent completion are durable.
+    () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS upload_intents (
+          id TEXT PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+          filename TEXT NOT NULL UNIQUE, original_name TEXT NOT NULL,
+          mime_type TEXT NOT NULL, file_size INTEGER NOT NULL, metadata_json TEXT NOT NULL,
+          expires_at INTEGER NOT NULL,
+          file_id INTEGER REFERENCES trip_files(id) ON DELETE SET NULL,
+          completed_at INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS idx_upload_intents_expiry ON upload_intents(expires_at);
+      `);
+    },
+    // Domain-validated staged uploads for journey and collaboration attachments.
+    () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS staged_upload_intents (
+          id TEXT PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          scope TEXT NOT NULL, target_id TEXT NOT NULL,
+          files_json TEXT NOT NULL, metadata_json TEXT NOT NULL,
+          expires_at INTEGER NOT NULL, completed_at INTEGER,
+          result_json TEXT, processing_at INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS idx_staged_upload_intents_expiry ON staged_upload_intents(expires_at);
+      `);
+    },
+    // Uncertain serverless mutations retain their claim until operator recovery.
+    () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS idempotency_claims (
+          key TEXT NOT NULL, user_id INTEGER NOT NULL, method TEXT NOT NULL, path TEXT NOT NULL,
+          state TEXT NOT NULL DEFAULT 'pending', created_at INTEGER NOT NULL,
+          PRIMARY KEY(key, user_id, method, path)
+        );
+      `);
+    },
+    // Awaited import processing publishes durable status for any polling instance.
+    () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS trek_import_jobs (
+          id TEXT PRIMARY KEY, trip_id TEXT NOT NULL, user_id INTEGER NOT NULL,
+          status TEXT NOT NULL, done INTEGER NOT NULL DEFAULT 0, total INTEGER NOT NULL,
+          result TEXT, error TEXT, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_trek_import_jobs_expiry ON trek_import_jobs(expires_at);
+      `);
+    },
   ];
+
+  return migrations;
+}
+
+export function expectedSchemaVersion(db: DbConnection): number {
+  return buildMigrations(db).length;
+}
+
+function runMigrations(db: DbConnection): void {
+  db.exec('CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)');
+  const versions = db.prepare('SELECT version FROM schema_version').all() as { version: number }[];
+  const migrations = buildMigrations(db);
+  if (versions.length > 1) throw new Error('Database has multiple schema versions; operator recovery is required');
+  const versionRow = versions[0];
+  let currentVersion = versionRow?.version ?? 0;
+  if (!Number.isInteger(currentVersion) || currentVersion < 0 || currentVersion > migrations.length) {
+    throw new Error('Database schema version is not supported by this release');
+  }
+
+  if (currentVersion === 0) {
+    const hasUnsplash = db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = 'unsplash_api_key'").get();
+    if (hasUnsplash) {
+      currentVersion = 19;
+      if (versionRow) db.prepare('UPDATE schema_version SET version = ?').run(currentVersion);
+      else db.prepare('INSERT INTO schema_version (version) VALUES (?)').run(currentVersion);
+      console.log('[DB] Schema already up-to-date, setting version to', currentVersion);
+    } else if (!versionRow) {
+      db.prepare('INSERT INTO schema_version (version) VALUES (?)').run(0);
+    }
+  }
 
   if (currentVersion < migrations.length) {
     for (let i = currentVersion; i < migrations.length; i++) {
@@ -5309,7 +5412,7 @@ function runMigrations(db: Database.Database): void {
         }
       } catch (err) {
         console.error(`[migrations] FATAL: Migration ${i + 1} failed, rolled back:`, err);
-        process.exit(1);
+        throw err;
       }
     }
     console.log(`[DB] Migrations complete — schema version ${migrations.length}`);

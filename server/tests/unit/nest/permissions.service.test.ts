@@ -9,7 +9,7 @@
  * swallow, and the no-op-save early return). Uses a real in-memory SQLite DB
  * so the app_settings SQL is exercised faithfully.
  */
-import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach, afterAll } from 'vitest';
 
 // ── DB setup ──────────────────────────────────────────────────────────────────
 
@@ -279,5 +279,42 @@ describe('module-scoped permissions cache', () => {
     invalidateSharedCache();
     expect(svc.getPermissionLevel('trip_edit')).toBe('trip_owner');
     expect(secondInstance.checkPermission('trip_edit', 'user', 10, 20, true)).toBe(false);
+  });
+});
+
+describe('Vercel authoritative permission reads', () => {
+  beforeEach(() => vi.stubEnv('VERCEL', '1'));
+  afterEach(() => { vi.unstubAllEnvs(); invalidateSharedCache(); });
+
+  it('immediately observes externally changed settings without process-local invalidation', () => {
+    const other = new PermissionsService(new DatabaseService(testDb));
+    expect(svc.checkPermission('trip_create', 'user', null, 42, false)).toBe(true);
+    expect(getPermissionsCache()).toBeNull();
+    testDb.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('perm_trip_create', 'admin')").run();
+    expect(svc.checkPermission('trip_create', 'user', null, 42, false)).toBe(false);
+    expect(other.checkPermission('trip_create', 'user', null, 42, false)).toBe(false);
+    expect(svc.getAllPermissions().trip_create).toBe('admin');
+    expect(getPermissionsCache()).toBeNull();
+  });
+
+  it('bypasses even a previously populated local cache when running on Vercel', () => {
+    vi.stubEnv('VERCEL', '0');
+    expect(svc.getPermissionLevel('trip_create')).toBe('everybody');
+    expect(getPermissionsCache()).not.toBeNull();
+    testDb.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('perm_trip_create', 'admin')").run();
+    vi.stubEnv('VERCEL', '1');
+    expect(svc.getPermissionLevel('trip_create')).toBe('admin');
+    expect(getPermissionsCache()).toBeNull();
+  });
+
+  it('throws on missing-schema or connection failures instead of granting permissive defaults', () => {
+    const bareDb = new Database(':memory:');
+    const unavailable = new PermissionsService(new DatabaseService(bareDb));
+    expect(() => unavailable.checkPermission('trip_create', 'user', null, 42, false)).toThrow(/no such table/);
+    bareDb.close();
+    expect(() => unavailable.checkPermission('trip_create', 'user', null, 42, false)).toThrow();
+    expect(() => unavailable.getAllPermissions()).toThrow();
+    expect(getPermissionsCache()).toBeNull();
+    expect(logError).toHaveBeenCalledWith(expect.stringMatching(/^Permissions load failed: /));
   });
 });

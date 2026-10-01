@@ -1,6 +1,8 @@
 import type { TranslationStrings } from '../types';
 
 const common: TranslationStrings = {
+  'common.serverlessLimitations':
+    'Aquest desplegament sense servidor no inclou connectors persistents, sincronització automàtica en segon pla, còpia de seguretat o restauració completa de la instància ni MCP. La planificació de viatges i la sincronització manual continuen disponibles.',
   'common.save': 'Desar',
   'common.showMore': 'Veure més',
   'common.showLess': 'Veure menys',

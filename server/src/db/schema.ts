@@ -1,6 +1,6 @@
-import Database from 'better-sqlite3';
+import type { DbConnection } from './adapter';
 
-function createTables(db: Database.Database): void {
+function createTables(db: DbConnection): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

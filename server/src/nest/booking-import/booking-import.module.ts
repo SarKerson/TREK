@@ -1,3 +1,4 @@
+import { ImportJobsRepository } from './import-jobs.repository';
 import { Module } from '@nestjs/common';
 import { BookingImportService } from './booking-import.service';
 import { ImportJobsService } from './import-jobs.service';
@@ -12,7 +13,7 @@ import { PlacesModule } from '../places/places.module';
 
 @Module({
   imports: [KitineraryExtractorModule, LlmParseModule, ReservationsModule, PermissionsModule, BudgetModule, AddonsModule, MapsModule, PlacesModule],
-  providers: [BookingImportService, ImportJobsService],
+  providers: [BookingImportService, ImportJobsService, ImportJobsRepository],
   // The HTTP surface lives in reservation-import/, which shares the prefix with
   // the AirTrail import; these are what it needs.
   exports: [BookingImportService, ImportJobsService],

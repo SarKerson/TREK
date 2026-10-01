@@ -1,3 +1,5 @@
+import RuntimeCapabilitiesNotice from '../components/shared/RuntimeCapabilitiesNotice'
+import { runtimeTabAvailable } from '../store/runtimeCapabilitiesStore'
 import SchoolHolidayCatalog from '../components/Admin/SchoolHolidayCatalog'
 import React, { Fragment } from 'react'
 import { adminApi } from '../api/client'
@@ -37,7 +39,7 @@ function AdminPageDesktop(): React.ReactElement {
   // each tab/section renders from a dedicated sub-component.
   const admin = useAdmin()
   const {
-    demoMode, mcpEnabled, devMode, managed, toast,
+    runtimeCapabilities, demoMode, mcpEnabled, devMode, managed, toast,
     activeTab, setActiveTab, stats,
     bagTrackingEnabled, setBagTrackingEnabled,
     collabFeatures, setCollabFeatures,
@@ -77,7 +79,7 @@ function AdminPageDesktop(): React.ReactElement {
       icon: tab.Icon,
       group: GROUP_LABELS[tab.group ?? 'config'],
     })),
-  ]
+  ].filter(tab => runtimeTabAvailable(tab.id, runtimeCapabilities))
 
   return (
     <PageShell background="var(--bg-secondary)">
@@ -93,6 +95,7 @@ function AdminPageDesktop(): React.ReactElement {
             </div>
           </div>
 
+          <RuntimeCapabilitiesNotice capabilities={runtimeCapabilities} />
           {/* Update Banner */}
           {updateInfo && (
             <AdminUpdateBanner updateInfo={updateInfo} t={t} onHowTo={() => setShowUpdateModal(true)} />
@@ -184,15 +187,15 @@ function AdminPageDesktop(): React.ReactElement {
             <AdminNotificationsTab admin={admin} t={t} />
           )}
 
-          {activeTab === 'backup' && <BackupPanel />}
+          {activeTab === 'backup' && runtimeTabAvailable('backup', runtimeCapabilities) && <BackupPanel />}
 
           {activeTab === 'audit' && <AuditLogPanel serverTimezone={serverTimezone} />}
 
-          {activeTab === 'mcp-tokens' && <AdminMcpTokensPanel />}
+          {activeTab === 'mcp-tokens' && runtimeTabAvailable('mcp-tokens', runtimeCapabilities) && <AdminMcpTokensPanel />}
 
-          {activeTab === 'plugins' && <AdminPluginsPanel />}
+          {activeTab === 'plugins' && runtimeTabAvailable('plugins', runtimeCapabilities) && <AdminPluginsPanel />}
 
-          {activeTab === 'storage' && <AdminStoragePanel />}
+          {activeTab === 'storage' && runtimeTabAvailable('storage', runtimeCapabilities) && <AdminStoragePanel />}
 
           {activeTab === 'github' && <GitHubPanel isPrerelease={updateInfo?.is_prerelease ?? false} />}
 

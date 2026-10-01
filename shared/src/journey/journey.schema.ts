@@ -1,4 +1,22 @@
 import { z } from 'zod';
+import { stagedUploadFileSchema } from '../file/file.schema';
+
+/** Text fields from the existing journey multipart uploads. */
+export const journeyDirectUploadMetadataSchema = z.object({
+  caption: z.string().max(10000).optional(),
+  duration_ms: z.string().refine(value => Number.isFinite(Number(value)) && Number(value) >= 0,
+    'Invalid video duration').optional(),
+}).strict();
+export type JourneyDirectUploadMetadata = z.infer<typeof journeyDirectUploadMetadataSchema>;
+
+/** Original bytes go straight to private storage; only this control plane crosses the API. */
+export const journeyDirectUploadRequestSchema = z.object({
+  files: z.array(stagedUploadFileSchema.extend({
+    fieldname: z.enum(['photos', 'video', 'poster', 'cover']),
+  })).min(1).max(100),
+  metadata: journeyDirectUploadMetadataSchema.default({}),
+}).strict();
+export type JourneyDirectUploadRequest = z.infer<typeof journeyDirectUploadRequestSchema>;
 
 /**
  * Journey API contract — cross-trip travel narrative (journeys, dated entries,

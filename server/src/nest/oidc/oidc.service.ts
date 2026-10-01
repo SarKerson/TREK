@@ -6,6 +6,8 @@ import { v4 as uuidv4 } from 'uuid';
 import bcrypt from 'bcryptjs';
 import type { Request, Response } from 'express';
 import { readEnv, getAppUrl } from '../../app-config';
+import { isVercelRuntime } from '../../runtime';
+import { SharedAuthStateRepository } from '../auth/shared-auth-state.repository';
 import { JWT_SECRET, SESSION_DURATION_SECONDS, SESSION_DURATION_REMEMBER_SECONDS } from '../../config';
 import { User } from '../../types';
 import { decrypt_api_key, maybe_encrypt_api_key } from '../common/crypto/apiKeyCrypto';
@@ -100,6 +102,8 @@ const MAX_RESPONSE_BYTES = 1024 * 1024;
 // JWKS on every callback.
 const JWKS_TTL_MS = 5 * 60 * 1000;
 type JwksEntry = { keys: Array<Record<string, unknown>>; fetchedAt: number };
+type PendingState = { createdAt: number; redirectUri: string; inviteToken?: string; codeVerifier: string; remember?: boolean };
+type AuthCode = { token: string; created: number; remember?: boolean; bindingHash: string };
 
 // ---------------------------------------------------------------------------
 // Module-private pure helpers
@@ -177,8 +181,9 @@ function safeOidcPicture(picture: unknown): string | null {
  * injected DatabaseService, with the resolveAuthToggles bridge import replaced
  * by the injected AuthService.
  *
- * The legacy module-level state (pending-state / auth-code maps and their two
- * sweep intervals, the discovery cache, the JWKS cache) lives on the instance:
+ * Vercel persists encrypted pending-state/auth-code values in the shared DB.
+ * Local pending-state/auth-code maps and their sweep intervals, plus the
+ * discovery and JWKS caches, live on the instance:
  * nothing outside the container consumes this domain, so no bridge needs to
  * share it. The sweepers start in the constructor (legacy started them at
  * import) and are cleared in onModuleDestroy.
@@ -199,7 +204,7 @@ export class OidcService implements OnModuleDestroy {
   // State management – pending OIDC states
   // -------------------------------------------------------------------------
 
-  private readonly pendingStates = new Map<string, { createdAt: number; redirectUri: string; inviteToken?: string; codeVerifier: string; remember?: boolean }>();
+  private readonly pendingStates = new Map<string, PendingState>();
 
   // -------------------------------------------------------------------------
   // Auth code management – short-lived codes exchanged for JWT
@@ -209,7 +214,7 @@ export class OidcService implements OnModuleDestroy {
   // the callback holds, in a cookie. The code itself travels in a URL — through
   // history, referrers and any log in between — so on its own it is not a
   // credential, and /exchange must not accept it as one.
-  private readonly authCodes = new Map<string, { token: string; created: number; remember?: boolean; bindingHash: string }>();
+  private readonly authCodes = new Map<string, AuthCode>();
 
   // Discovery document cache (1 h TTL), keyed by discovery URL so two
   // configured issuers no longer thrash a single slot.
@@ -221,14 +226,17 @@ export class OidcService implements OnModuleDestroy {
   // not a line on every login.
   private readonly warnedMissingAdminClaims = new Set<string>();
 
-  private readonly stateSweeper: NodeJS.Timeout;
-  private readonly codeSweeper: NodeJS.Timeout;
+  private readonly stateSweeper?: NodeJS.Timeout;
+  private readonly codeSweeper?: NodeJS.Timeout;
+  private readonly sharedState: SharedAuthStateRepository;
 
   constructor(
     private readonly db: DatabaseService,
     private readonly auth: AuthService,
     private readonly membership: TripMembershipService,
   ) {
+    this.sharedState = new SharedAuthStateRepository(db);
+    if (isVercelRuntime()) return;
     this.stateSweeper = setInterval(() => {
       const now = Date.now();
       for (const [state, data] of this.pendingStates) {
@@ -255,17 +263,23 @@ export class OidcService implements OnModuleDestroy {
   setAuthCookie(res: Response, token: string, req: Request, remember?: RememberOption) { setAuthCookie(res, token, req, remember); }
 
   // Creates the login state and a matching PKCE pair. The verifier stays server
-  // side (in pendingStates); the S256 challenge goes to the provider so PKCE-
+  // side (encrypted shared state on Vercel); the S256 challenge goes to the provider so PKCE-
   // required setups (e.g. Pocket ID with PKCE = required) work.
   createState(redirectUri: string, inviteToken?: string, remember?: boolean): { state: string; codeChallenge: string } {
     const state = crypto.randomBytes(32).toString('hex');
     const codeVerifier = base64url(crypto.randomBytes(32));
     const codeChallenge = base64url(crypto.createHash('sha256').update(codeVerifier).digest());
-    this.pendingStates.set(state, { createdAt: Date.now(), redirectUri, inviteToken, codeVerifier, remember });
+    const pending = { createdAt: Date.now(), redirectUri, inviteToken, codeVerifier, remember };
+    if (isVercelRuntime()) this.sharedState.put('oidc-state', state, pending, pending.createdAt + STATE_TTL);
+    else this.pendingStates.set(state, pending);
     return { state, codeChallenge };
   }
 
   consumeState(state: string) {
+    if (isVercelRuntime()) {
+      const consumed = this.sharedState.consume<PendingState>('oidc-state', state);
+      return consumed?.expired === false ? consumed.value : null;
+    }
     const pending = this.pendingStates.get(state);
     if (!pending) return null;
     this.pendingStates.delete(state);
@@ -282,12 +296,21 @@ export class OidcService implements OnModuleDestroy {
   createAuthCode(token: string, remember?: boolean): { code: string; binding: string } {
     const authCode: string = uuidv4();
     const binding = crypto.randomBytes(32).toString('base64url');
-    this.authCodes.set(authCode, { token, created: Date.now(), remember, bindingHash: sha256Hex(binding) });
+    const entry = { token, created: Date.now(), remember, bindingHash: sha256Hex(binding) };
+    if (isVercelRuntime()) this.sharedState.put('oidc-code', authCode, entry, entry.created + AUTH_CODE_TTL);
+    else this.authCodes.set(authCode, entry);
     return { code: authCode, binding };
   }
 
   consumeAuthCode(code: string, binding?: string): { token: string; remember?: boolean } | { error: string } {
-    const entry = this.authCodes.get(code);
+    let entry: AuthCode | undefined;
+    if (isVercelRuntime()) {
+      const consumed = this.sharedState.consume<AuthCode>('oidc-code', code);
+      if (consumed?.expired) return { error: 'Code expired' };
+      entry = consumed?.expired === false ? consumed.value : undefined;
+    } else {
+      entry = this.authCodes.get(code);
+    }
     if (!entry) return { error: 'Invalid or expired code' };
     // Single use, burnt on every outcome: a code seen by someone else must not
     // survive their attempt for a second guess, and the browser that owns it can
@@ -702,7 +725,7 @@ export class OidcService implements OnModuleDestroy {
       }
     }
 
-    if (!isFirstUser && !validInvite) {
+    if ((isVercelRuntime() || !isFirstUser) && !validInvite) {
       const { oidc_registration } = this.auth.resolveAuthToggles();
       if (!oidc_registration) {
         return { error: 'registration_disabled' };
@@ -734,7 +757,10 @@ export class OidcService implements OnModuleDestroy {
       const result = this.db.transaction(() => {
         if (validInvite) {
           const updated = this.db.prepare(
-            'UPDATE invite_tokens SET used_count = used_count + 1 WHERE id = ? AND (max_uses = 0 OR used_count < max_uses)',
+            isVercelRuntime()
+              ? `UPDATE invite_tokens SET used_count = used_count + 1 WHERE id = ? AND (max_uses = 0 OR used_count < max_uses)
+                  AND (expires_at IS NULL OR julianday(expires_at) > julianday('now'))`
+              : 'UPDATE invite_tokens SET used_count = used_count + 1 WHERE id = ? AND (max_uses = 0 OR used_count < max_uses)',
           ).run(validInvite.id);
           if (updated.changes === 0) throw inviteRaceError;
         }

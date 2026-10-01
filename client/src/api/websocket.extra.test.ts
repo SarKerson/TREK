@@ -101,6 +101,8 @@ describe('websocket > reconnect refetch hook', () => {
     joinTrip(3)
     const sock = await openSocket()
     sock.onopen!()
+    expect(order).toEqual([])
+    sock.onmessage!({ data: JSON.stringify({ type: 'joined', tripId: 3 }) })
     await vi.advanceTimersByTimeAsync(0)
 
     expect(order).toEqual(['flush', 'refetch'])
@@ -115,6 +117,7 @@ describe('websocket > reconnect refetch hook', () => {
     joinTrip(3)
     const sock = await openSocket()
     sock.onopen!()
+    sock.onmessage!({ data: JSON.stringify({ type: 'joined', tripId: 3 }) })
     await vi.advanceTimersByTimeAsync(0)
 
     expect(refetch).toHaveBeenCalledWith('3')
@@ -129,6 +132,7 @@ describe('websocket > reconnect refetch hook', () => {
     const sock = await openSocket()
 
     expect(() => sock.onopen!()).not.toThrow()
+    expect(() => sock.onmessage!({ data: JSON.stringify({ type: 'joined', tripId: 3 }) })).not.toThrow()
     expect(consoleError).toHaveBeenCalledWith(
       'Failed to refetch trip data on reconnect:',
       expect.any(Error),
@@ -144,6 +148,64 @@ describe('websocket > reconnect refetch hook', () => {
 
     expect(sock.send).not.toHaveBeenCalled()
     expect(refetch).not.toHaveBeenCalled()
+  })
+})
+
+describe('websocket > acknowledged refresh safety', () => {
+  it('flushes only once for multiple joined trips and ignores acknowledgements after leaving', async () => {
+    const flush = vi.fn(async () => {})
+    const refetch = vi.fn()
+    setPreReconnectHook(flush)
+    setRefetchCallback(refetch)
+    joinTrip(1); joinTrip(2)
+    const sock = await openSocket()
+    sock.onopen!()
+    sock.onmessage!({ data: JSON.stringify({ type: 'joined', tripId: 1 }) })
+    sock.onmessage!({ data: JSON.stringify({ type: 'joined', tripId: 2 }) })
+    leaveTrip(2)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(flush).toHaveBeenCalledTimes(1)
+    expect(refetch).toHaveBeenCalledExactlyOnceWith('1')
+  })
+
+  it('does not refresh after disconnect while the mutation flush is pending', async () => {
+    let finish!: () => void
+    setPreReconnectHook(() => new Promise<void>(resolve => { finish = resolve }))
+    const refetch = vi.fn()
+    setRefetchCallback(refetch)
+    joinTrip(1)
+    const sock = await openSocket()
+    sock.onopen!()
+    sock.onmessage!({ data: JSON.stringify({ type: 'joined', tripId: 1 }) })
+    await vi.advanceTimersByTimeAsync(0)
+    disconnect()
+    finish()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(refetch).not.toHaveBeenCalled()
+  })
+
+  it('can reconnect after a rejected session is replaced by a new login', async () => {
+    server.use(http.post('/api/auth/ws-token', () => new HttpResponse(null, { status: 401 })))
+    connect()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(MockWebSocket.instances).toHaveLength(0)
+    server.use(http.post('/api/auth/ws-token', () => HttpResponse.json({ token: 'new-login' })))
+    await openSocket()
+    expect(MockWebSocket.instances).toHaveLength(1)
+  })
+
+  it('does not resurrect a socket after logout during ticket fetch', async () => {
+    let finish!: () => void
+    server.use(http.post('/api/auth/ws-token', async () => {
+      await new Promise<void>(resolve => { finish = resolve })
+      return HttpResponse.json({ token: 'late-ticket' })
+    }))
+    connect()
+    await vi.advanceTimersByTimeAsync(0)
+    disconnect()
+    finish()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(MockWebSocket.instances).toHaveLength(0)
   })
 })
 

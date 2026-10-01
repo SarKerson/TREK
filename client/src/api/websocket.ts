@@ -22,6 +22,8 @@ let shouldReconnect = false
 let refetchCallback: RefetchCallback | null = null
 let mySocketId: string | null = null
 let connecting = false
+let connectionEpoch = 0
+let reconnectPreparation: Promise<void> | null = null
 /** Hook run before refetchCallback on reconnect. Awaited so mutations land first. */
 let preReconnectHook: (() => Promise<void>) | null = null
 
@@ -54,7 +56,7 @@ function getWsUrl(wsToken: string): string {
   return `${protocol}://${location.host}/ws?token=${wsToken}`
 }
 
-async function fetchWsToken(): Promise<string | null> {
+async function fetchWsToken(epoch: number): Promise<string | null> {
   try {
     const resp = await fetch('/api/auth/ws-token', {
       method: 'POST',
@@ -62,7 +64,7 @@ async function fetchWsToken(): Promise<string | null> {
     })
     if (resp.status === 401) {
       // Session expired — stop reconnecting
-      shouldReconnect = false
+      if (epoch === connectionEpoch) shouldReconnect = false
       return null
     }
     if (!resp.ok) return null
@@ -80,11 +82,31 @@ function handleMessage(event: MessageEvent): void {
       mySocketId = parsed.socketId
       return
     }
+    if (parsed.type === 'joined') refreshJoinedTrip(String(parsed.tripId))
     listeners.forEach(fn => {
       try { fn(parsed) } catch (err: unknown) { console.error('WebSocket listener error:', err) }
     })
   } catch (err: unknown) {
     console.error('WebSocket message parse error:', err)
+  }
+}
+
+/** Read canonical state only once the server has installed the room subscription. */
+function refreshJoinedTrip(tripId: string): void {
+  if (!activeTrips.has(tripId) || !refetchCallback) return
+  const currentSocket = socket
+  const refetch = () => {
+    if (socket !== currentSocket || !activeTrips.has(tripId) || !refetchCallback) return
+    try { refetchCallback(tripId) } catch (err: unknown) {
+      console.error('Failed to refetch trip data on reconnect:', err)
+    }
+  }
+  if (preReconnectHook) {
+    // All room acknowledgements on this connection share one queue flush.
+    reconnectPreparation ??= Promise.resolve().then(preReconnectHook).catch(console.error)
+    void reconnectPreparation.then(refetch)
+  } else {
+    refetch()
   }
 }
 
@@ -106,8 +128,11 @@ async function connectInternal(_isReconnect = false): Promise<void> {
   }
 
   connecting = true
-  const wsToken = await fetchWsToken()
+  const epoch = connectionEpoch
+  const wsToken = await fetchWsToken(epoch)
+  if (epoch !== connectionEpoch) return
   connecting = false
+  if (!shouldReconnect) return
 
   if (!wsToken) {
     if (shouldReconnect) scheduleReconnect()
@@ -116,9 +141,12 @@ async function connectInternal(_isReconnect = false): Promise<void> {
 
   const url = getWsUrl(wsToken)
   socket = new WebSocket(url)
+  const currentSocket = socket
 
   socket.onopen = () => {
+    if (socket !== currentSocket) return
     reconnectDelay = 1000
+    reconnectPreparation = null
     activeBooks.forEach(journeyId => {
       if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({ type: 'book:join', journeyId }))
@@ -130,29 +158,18 @@ async function connectInternal(_isReconnect = false): Promise<void> {
           socket.send(JSON.stringify({ type: 'join', tripId }))
         }
       })
-      if (refetchCallback) {
-        const doRefetch = () => {
-          activeTrips.forEach(tripId => {
-            try { refetchCallback!(tripId) } catch (err: unknown) {
-              console.error('Failed to refetch trip data on reconnect:', err)
-            }
-          })
-        }
-        // Flush queued mutations first so local writes land before server read-back.
-        // If the hook fails, still refetch to keep the UI correct.
-        if (preReconnectHook) {
-          preReconnectHook().catch(console.error).then(doRefetch)
-        } else {
-          doRefetch()
-        }
-      }
     }
   }
 
-  socket.onmessage = handleMessage
+  socket.onmessage = event => {
+    if (socket === currentSocket) handleMessage(event)
+  }
 
   socket.onclose = () => {
+    if (socket !== currentSocket) return
     socket = null
+    mySocketId = null
+    reconnectPreparation = null
     if (shouldReconnect) {
       scheduleReconnect()
     }
@@ -175,6 +192,10 @@ export function connect(): void {
 
 export function disconnect(): void {
   shouldReconnect = false
+  connectionEpoch++
+  connecting = false
+  mySocketId = null
+  reconnectPreparation = null
   if (reconnectTimer) {
     clearTimeout(reconnectTimer)
     reconnectTimer = null

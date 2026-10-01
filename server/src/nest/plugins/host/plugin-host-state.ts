@@ -1,4 +1,4 @@
-import type Database from 'better-sqlite3';
+import type { DbConnection } from '../../../db/adapter';
 import { PluginDataDb } from './plugin-data.service';
 import { DailyBudget, DEFAULT_DAILY_BUDGET } from './daily-budget';
 
@@ -44,7 +44,7 @@ export function closePluginDataDb(id: string): void {
 // nothing persisted or phoned home.
 const budgets = new Map<string, DailyBudget>();
 
-export function budgetFor(id: string, conn: Database.Database): DailyBudget {
+export function budgetFor(id: string, conn: DbConnection): DailyBudget {
   let b = budgets.get(id);
   if (!b) {
     const now = Date.now();
@@ -64,6 +64,6 @@ export function budgetFor(id: string, conn: Database.Database): DailyBudget {
 }
 
 /** Today's broker usage for one plugin (admin view). Seeds the counter if unseen. */
-export function pluginBudgetUsage(id: string, conn: Database.Database): ReturnType<DailyBudget['used']> {
+export function pluginBudgetUsage(id: string, conn: DbConnection): ReturnType<DailyBudget['used']> {
   return budgetFor(id, conn).used(Date.now());
 }

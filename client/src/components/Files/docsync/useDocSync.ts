@@ -1,3 +1,4 @@
+import { useRuntimeCapabilities } from '../../../hooks/useRuntimeCapabilities'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { docsyncApi } from '../../../api/client'
 import { useServerPing } from '../../../sync/useServerPing'
@@ -144,6 +145,8 @@ export function canManageDocSync(
 }
 
 export function useDocSync(tripId: number | string, enabled: boolean) {
+  const runtimeCapabilities = useRuntimeCapabilities()
+  const backgroundAutosync = runtimeCapabilities?.backgroundAutosync !== false
   const [providers, setProviders] = useState<DocSyncProvider[]>([])
   const [connections, setConnections] = useState<DocSyncConnection[]>([])
   const [links, setLinks] = useState<DocSyncLink[]>([])
@@ -318,7 +321,7 @@ export function useDocSync(tripId: number | string, enabled: boolean) {
     setBusy('link')
     setError(null)
     try {
-      await docsyncApi.createLink(tripId, payload)
+      await docsyncApi.createLink(tripId, backgroundAutosync ? payload : { ...payload, syncEnabled: false })
       await load()
       return true
     } catch (e: unknown) {
@@ -327,7 +330,7 @@ export function useDocSync(tripId: number | string, enabled: boolean) {
     } finally {
       setBusy(null)
     }
-  }, [tripId, load])
+  }, [tripId, load, backgroundAutosync])
 
   /**
    * Change one binding, optimistically.
@@ -417,6 +420,7 @@ export function useDocSync(tripId: number | string, enabled: boolean) {
   const usableProviders = useMemo(() => providers.filter(p => p.available), [providers])
 
   return {
+    backgroundAutosync,
     providers: usableProviders,
     connections, links, itemCounts,
     loading, busy, error,

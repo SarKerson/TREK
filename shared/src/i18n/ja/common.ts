@@ -1,6 +1,8 @@
 import type { TranslationStrings } from '../types';
 
 const common: TranslationStrings = {
+  'common.serverlessLimitations':
+    'このサーバーレス環境では、常駐プラグイン、バックグラウンド自動同期、インスタンス全体のバックアップと復元、MCPは利用できません。旅行計画と手動同期は引き続き利用できます。',
   'common.save': '保存',
   'common.showMore': 'もっと見る',
   'common.showLess': '閉じる',

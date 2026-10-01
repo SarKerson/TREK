@@ -3,6 +3,9 @@ import {
   fileUploadRequestSchema,
   fileUpdateRequestSchema,
   fileLinkRequestSchema,
+  fileDirectUploadRequestSchema,
+  fileDirectUploadCompleteSchema,
+  fileDirectUploadGrantSchema,
 } from '@trek/shared';
 
 /**
@@ -16,3 +19,6 @@ import {
 export class FileUploadDto extends createZodDto(fileUploadRequestSchema) {}
 export class FileUpdateDto extends createZodDto(fileUpdateRequestSchema) {}
 export class FileLinkDto extends createZodDto(fileLinkRequestSchema) {}
+export class FileDirectUploadDto extends createZodDto(fileDirectUploadRequestSchema) {}
+export class FileDirectUploadCompleteDto extends createZodDto(fileDirectUploadCompleteSchema) {}
+export class FileDirectUploadGrantDto extends createZodDto(fileDirectUploadGrantSchema) {}

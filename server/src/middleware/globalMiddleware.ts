@@ -217,6 +217,7 @@ export function applyGlobalMiddleware(
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://unpkg.com"],
         imgSrc: ["'self'", "data:", "blob:", "https:"],
         connectSrc: [
+          'https://blob.vercel-storage.com',
           "'self'", "ws:", "wss:",
           "https://nominatim.openstreetmap.org", "https://overpass-api.de",
           "https://places.googleapis.com", "https://api.openweathermap.org",

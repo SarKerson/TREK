@@ -1,6 +1,8 @@
 import type { TranslationStrings } from '../types';
 
 const common: TranslationStrings = {
+  'common.serverlessLimitations':
+    'Ebben a szerver nélküli telepítésben nem érhetők el tartós bővítmények, automatikus háttérszinkronizálás, teljes példánymentés vagy visszaállítás, illetve MCP. Az utazástervezés és a kézi szinkronizálás továbbra is elérhető.',
   'common.save': 'Mentés',
   'common.showMore': 'Továbbiak',
   'common.showLess': 'Kevesebb',

@@ -1,6 +1,8 @@
 import type { TranslationStrings } from '../types';
 
 const common: TranslationStrings = {
+  'common.serverlessLimitations':
+    'Denna serverlösa installation saknar beständiga insticksprogram, automatisk bakgrundssynkronisering, fullständig säkerhetskopiering eller återställning av instansen samt MCP. Reseplanering och manuell synkronisering är fortfarande tillgängliga.',
   'common.datepicker.prevMonth': 'Föregående månad',
   'common.datepicker.nextMonth': 'Nästa månad',
   'common.datepicker.prevYear': 'Föregående år',
