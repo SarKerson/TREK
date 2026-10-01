@@ -5,6 +5,11 @@ import type { DbConnection } from './adapter';
 export function verifyRemoteDatabaseCompatibility(db: DbConnection): void {
   const foreignKeys = db.prepare('PRAGMA foreign_keys').get() as { foreign_keys: number };
   if (foreignKeys?.foreign_keys !== 1) throw new Error('Remote connections must enforce foreign keys by default');
+  const named = db.prepare('SELECT :id AS id, @id AS at_id, $label AS label, :id AS repeated')
+    .get({ id: 1, label: 'trek-release' }) as { id: number; at_id: number; label: string; repeated: number } | undefined;
+  if (named?.id !== 1 || named.at_id !== 1 || named.label !== 'trek-release' || named.repeated !== 1) {
+    throw new Error('Remote named SQL binding compatibility failed');
+  }
   const namespace = 'trek:release-probe';
   const key = randomUUID();
   const rolledBack = new Error('Successful rollback-only compatibility probe');
@@ -16,9 +21,16 @@ export function verifyRemoteDatabaseCompatibility(db: DbConnection): void {
   ).run(value, namespace, key);
   try {
     db.transaction(() => {
-      db.prepare(
-        'INSERT INTO auth_ephemeral_state(namespace, key_hash, value, expires_at) VALUES (?, ?, ?, ?)',
-      ).run(namespace, key, 'initial', Date.now() + 60_000);
+      const inserted = db.prepare(
+        'INSERT INTO auth_ephemeral_state(namespace, key_hash, value, expires_at) VALUES (:namespace, :key, :value, :expires)',
+      ).run({ namespace, key, value: 'initial', expires: Date.now() + 60_000 });
+      const insertedRow = db.prepare(
+        'SELECT value FROM auth_ephemeral_state WHERE rowid = :id AND namespace = :namespace AND key_hash = :key',
+      ).get({ id: inserted.lastInsertRowid, namespace, key }) as { value: string } | undefined;
+      if (inserted.changes !== 1 || !Number.isSafeInteger(inserted.lastInsertRowid)
+        || Number(inserted.lastInsertRowid) < 1 || insertedRow?.value !== 'initial') {
+        throw new Error('Remote generated row ID and named SQL round-trip compatibility failed');
+      }
       db.transaction(() => write('nested'))();
       const innerRollback = new Error('Inner rollback');
       try {

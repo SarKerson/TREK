@@ -1,5 +1,6 @@
 import type Sqlite from 'better-sqlite3';
 import Libsql from 'libsql';
+import { compileSqlBindings } from './sql-bindings';
 
 /** The synchronous SQL surface TREK actually uses, shared by local and remote DBs. */
 export interface DbStatement {
@@ -31,16 +32,6 @@ function cleanRow(row: unknown): unknown {
   return row;
 }
 
-function bindings(params: unknown[]): unknown[] {
-  const first = params[0];
-  // libsql treats a sole object as named bindings, including null and Buffer:
-  // those two can throw or abort the native driver. Explicitly group positional
-  // values in one array and only forward plain named-binding maps as objects.
-  if (params.length === 1 && first !== null && typeof first === 'object'
-    && !Array.isArray(first) && !ArrayBuffer.isView(first)) return [first];
-  return [params.flat()];
-}
-
 /** Direct remote connection: never uses a file replica or cached authorization reads. */
 export class LibsqlConnection implements DbConnection {
   private readonly driver: Libsql.Database;
@@ -56,12 +47,13 @@ export class LibsqlConnection implements DbConnection {
   close(): void { this.driver.close(); }
   exec(sql: string): void { this.driver.exec(sql); }
   prepare(sql: string): DbStatement {
-    const statement = this.driver.prepare(sql);
+    const bindings = compileSqlBindings(sql);
+    const statement = this.driver.prepare(bindings.sql);
     return {
-      get: (...params) => cleanRow(statement.get(...bindings(params))),
-      all: (...params) => statement.all(...bindings(params)).map(cleanRow),
+      get: (...params) => cleanRow(statement.get(...bindings.bind(params))),
+      all: (...params) => statement.all(...bindings.bind(params)).map(cleanRow),
       run: (...params) => {
-        const { changes, lastInsertRowid } = statement.run(...bindings(params));
+        const { changes, lastInsertRowid } = statement.run(...bindings.bind(params));
         return { changes, lastInsertRowid };
       },
     };
