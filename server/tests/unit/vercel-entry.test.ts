@@ -93,5 +93,10 @@ it('packages the HTTP server, native databases, and WebSocket rewrite', () => {
   expect(config.rewrites).toContainEqual({ source: '/ws', destination: '/api/index' });
   expect(config.functions['api/index.js'].includeFiles).toContain('@libsql');
   expect(config.functions['api/index.js'].includeFiles).toContain('better-sqlite3');
+  expect(config.functions['api/index.js'].includeFiles).toContain('@napi-rs/canvas');
+  expect(config.functions['api/index.js'].includeFiles).toContain('pdf-parse/dist/pdf-parse/cjs/pdf.worker.mjs');
   expect(config.functions['api/index.js'].maxDuration).toBe(300);
+  expect(config.functions['api/index.js'].excludeFiles).toContain('server/data/**');
+  expect(config.functions['api/index.js'].excludeFiles).toContain('server/data/**/.*');
+  expect(config.functions['api/index.js'].excludeFiles).toContain('**/.env');
 });

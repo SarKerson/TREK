@@ -152,6 +152,14 @@ The runtime smoke test uses an isolated in-memory database and fixed test-only
 configuration. It checks sanitizer behavior, a real `/api/health` request, and
 unauthenticated rejection without reading deployment credentials or connecting
 to Turso/Blob. It also catches SDK subpath imports that test aliases can conceal.
+It extracts real text from a small PDF, then repeats startup with the native
+canvas package unavailable: health/auth/text must still work and only PDF
+extraction may fail with a bounded warning. PDF parsing is lazy-loaded.
+
+Vercel's file tracing does not detect PDF.js's dynamic canvas/worker loads.
+`includeFiles` explicitly retains the canvas wrapper, Linux glibc native binding,
+and the CJS PDF worker. Keep these entries when updating PDF dependencies;
+source-directory smoke tests alone do not validate the final packaged artifact.
 
 A compilation or local mock is not deployed validation. Before family use, verify
 owner login and closed public signup, top-level HTML security headers, two-client

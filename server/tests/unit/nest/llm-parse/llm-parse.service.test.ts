@@ -185,13 +185,16 @@ describe('LlmParseService', () => {
     spy.mockRestore();
   });
 
-  it('warns when the file cannot be read (text extraction throws)', async () => {
-    extractText.mockRejectedValue(new Error('corrupt pdf'));
-    const res = await svc().parse(file('a.pdf', '%PDF'), 1);
-    expect(res.kiItems).toEqual([]);
-    expect(res.warnings[0]).toMatch(/could not read file/i);
-    expect(res.warnings[0]).toContain('corrupt pdf');
-  });
+  it.each(['corrupt pdf', 'PDF text extraction is unavailable on this server'])(
+    'warns when text extraction fails: %s',
+    async (message) => {
+      extractText.mockRejectedValue(new Error(message));
+      const res = await svc().parse(file('a.pdf', '%PDF'), 1);
+      expect(res.kiItems).toEqual([]);
+      expect(res.warnings[0]).toMatch(/could not read file/i);
+      expect(res.warnings[0]).toContain(message);
+    },
+  );
 });
 
 /**

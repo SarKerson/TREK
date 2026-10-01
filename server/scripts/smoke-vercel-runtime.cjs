@@ -3,6 +3,44 @@
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const { Server, get } = require('node:http');
+const Module = require('node:module');
+
+const withoutCanvas = process.argv.includes('--without-canvas');
+if (withoutCanvas) {
+  const originalLoad = Module._load;
+  Module._load = function (specifier, ...args) {
+    if (specifier === '@napi-rs/canvas' || specifier.startsWith('@napi-rs/canvas-')) {
+      const error = new Error('Simulated missing canvas binding');
+      error.code = 'MODULE_NOT_FOUND';
+      throw error;
+    }
+    return originalLoad.call(this, specifier, ...args);
+  };
+}
+
+function pdfFixture() {
+  const text = 'Runtime PDF extraction works';
+  const content = `BT /F1 12 Tf 30 100 Td (${text}) Tj ET`;
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 150] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    `<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}\nendstream`,
+  ];
+  let pdf = '%PDF-1.4\n';
+  const offsets = [0];
+  for (const [i, object] of objects.entries()) {
+    offsets.push(Buffer.byteLength(pdf));
+    pdf += `${i + 1} 0 obj\n${object}\nendobj\n`;
+  }
+  const xref = Buffer.byteLength(pdf);
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (const offset of offsets.slice(1)) pdf += `${String(offset).padStart(10, '0')} 00000 n \n`;
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(pdf);
+}
+
 // Use Node's HTTP client so the smoke exercises the same request listener as
 // the Function without a test runner or a fetch adapter.
 function request(url) {
@@ -50,7 +88,18 @@ async function main() {
     assert.deepEqual(JSON.parse(response.body), { status: 'ok' });
     const protectedResponse = await request(`${origin}/api/trips`);
     assert.equal(protectedResponse.status, 401);
-    process.stdout.write('[runtime smoke] Compiled Vercel entry, sanitizer, health and auth guard passed\n');
+    const { extractText } = require('../dist/nest/llm-parse/text-extract.js');
+    assert.equal(await extractText(Buffer.from('plain text still works'), 'booking.txt'), 'plain text still works');
+    if (withoutCanvas) {
+      await assert.rejects(extractText(pdfFixture(), 'booking.pdf'), {
+        message: 'PDF text extraction is unavailable on this server',
+      });
+    } else {
+      assert.equal(await extractText(pdfFixture(), 'booking.pdf'), 'Runtime PDF extraction works');
+    }
+    process.stdout.write(
+      `[runtime smoke] Health, auth, sanitizer and PDF ${withoutCanvas ? 'isolation' : 'extraction'} passed\n`,
+    );
   } finally {
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));

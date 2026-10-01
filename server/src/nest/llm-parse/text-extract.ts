@@ -1,6 +1,5 @@
 import { parseEmail } from './mime-email';
 import { extname } from 'node:path';
-import { PDFParse } from 'pdf-parse';
 import { stripHtmlTags } from '../common/stripHtmlTags';
 
 /** File extensions whose bytes are inherently text and can be decoded directly. */
@@ -136,6 +135,14 @@ function extractEmailText(buffer: Buffer): string {
 
 /** Extract the embedded text layer from a PDF (empty for scanned/image-only PDFs). */
 async function extractPdfText(buffer: Buffer): Promise<string> {
+  // PDF.js needs a native canvas binding even for text extraction. Load it only
+  // for PDF requests so a packaging failure cannot take down health or login.
+  let PDFParse: typeof import('pdf-parse').PDFParse;
+  try {
+    ({ PDFParse } = await import('pdf-parse'));
+  } catch (cause) {
+    throw new Error('PDF text extraction is unavailable on this server', { cause });
+  }
   const parser = new PDFParse({ data: new Uint8Array(buffer) });
   try {
     // Space (not tab) between same-line items reads more naturally for the LLM.
