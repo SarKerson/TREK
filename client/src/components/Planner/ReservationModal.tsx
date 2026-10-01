@@ -26,6 +26,7 @@ import type { BookingExpenseRequest } from './BookingCostsSection.types'
 import type { BookingReviewDraft } from './parsedItemToDraft'
 import { typeToCostCategory } from '@trek/shared'
 import { stayPlaces } from '../../utils/stayPlaces'
+import { useBookingFormSession } from './useBookingFormSession'
 
 const TYPE_OPTIONS = [
   { value: 'hotel',      labelKey: 'reservations.type.hotel',      Icon: Hotel },
@@ -115,7 +116,7 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
     return { min: dates[0], max: dates[dates.length - 1] }
   }, [days])
 
-  useEffect(() => {
+  useBookingFormSession({ isOpen, reservation, prefill }, () => {
     // Match an existing place by name (exact, then loose contains) for hotels.
     const matchPlaceId = (name: string | undefined): string | number => {
       const n = (name || '').trim().toLowerCase()
@@ -206,8 +207,7 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
       })
       setPendingFiles([])
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reservation, prefill, isOpen, selectedDayId, defaultAssignmentId, days, places, accommodations])
+  })
 
   const set = (field, value) => setForm(prev => ({ ...prev, [field]: value }))
 

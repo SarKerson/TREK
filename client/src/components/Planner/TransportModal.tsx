@@ -24,6 +24,7 @@ import { TravelerPicker } from './TravelerPicker'
 import type { TripMember } from '../Budget/BudgetPanelMemberChips'
 import type { BookingExpenseRequest } from './BookingCostsSection.types'
 import type { BookingReviewDraft } from './parsedItemToDraft'
+import { useBookingFormSession } from './useBookingFormSession'
 import TransitSearchPanel, { type PickedPlace } from './TransitSearchPanel'
 import { typeToCostCategory } from '@trek/shared'
 
@@ -195,7 +196,6 @@ export function TransportModal({ isOpen, onClose, onSave, reservation, days, sel
   // The trip's places, offered by every location field of the manual tab (#2468).
   const locationPicks = useMemo(() => toLocationPicks(places), [places])
   const isBudgetEnabled = useAddonStore(s => s.isEnabled('budget'))
-  const budgetItems = useTripStore(s => s.budgetItems)
   const deleteBudgetItem = useTripStore(s => s.deleteBudgetItem)
   const loadFiles = useTripStore(s => s.loadFiles)
   const setReservationTravelers = useTripStore(s => s.setReservationTravelers)
@@ -250,8 +250,7 @@ export function TransportModal({ isOpen, onClose, onSave, reservation, days, sel
     if (!isOpen) setShowFilePicker(false)
   }, [isOpen])
 
-  useEffect(() => {
-    if (!isOpen) return
+  useBookingFormSession({ isOpen, reservation, prefill }, () => {
     setTravelerIds(new Set((reservation?.travelers || []).map(tv => tv.user_id)))
     // Edit uses the saved `reservation`; a review-import populates from `prefill`.
     // Either way the init reads the same fields — `reservation` still decides
@@ -409,7 +408,7 @@ export function TransportModal({ isOpen, onClose, onSave, reservation, days, sel
       setTrainWaypoints([emptyStationWaypoint(selectedDayId ?? ''), emptyStationWaypoint(selectedDayId ?? '')])
       setCarStops([])
     }
-  }, [isOpen, reservation, prefill, selectedDayId, budgetItems])
+  })
 
   const set = (field: string, value: any) => setForm(prev => ({ ...prev, [field]: value }))
 
