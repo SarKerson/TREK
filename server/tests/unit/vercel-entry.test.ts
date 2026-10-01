@@ -91,6 +91,8 @@ it('packages the HTTP server, native databases, and WebSocket rewrite', () => {
   expect(entry).toContain("require('../server/dist/vercel').default");
   const config = JSON.parse(readFileSync(resolve(root, 'vercel.json'), 'utf8'));
   expect(config.rewrites).toContainEqual({ source: '/ws', destination: '/api/index' });
+  expect(config.functions['api/index.js'].includeFiles.length).toBeLessThanOrEqual(256);
+  expect(config.functions['api/index.js'].excludeFiles.length).toBeLessThanOrEqual(256);
   expect(config.functions['api/index.js'].includeFiles).toContain('@libsql');
   expect(config.functions['api/index.js'].includeFiles).toContain('better-sqlite3');
   expect(config.functions['api/index.js'].includeFiles).toContain('@napi-rs/canvas');

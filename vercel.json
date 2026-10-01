@@ -6,7 +6,7 @@
   "functions": {
     "api/index.js": {
       "maxDuration": 300,
-      "includeFiles": "{server/dist/**,node_modules/@libsql/**,server/node_modules/@libsql/**,node_modules/better-sqlite3/**/*.node,server/node_modules/better-sqlite3/**/*.node,node_modules/@napi-rs/canvas{,-linux-x64-gnu,-linux-arm64-gnu}/**,server/node_modules/@napi-rs/canvas{,-linux-x64-gnu,-linux-arm64-gnu}/**,node_modules/pdf-parse/dist/pdf-parse/cjs/pdf.worker.mjs,server/node_modules/pdf-parse/dist/pdf-parse/cjs/pdf.worker.mjs}",
+      "includeFiles": "{server/dist/**,{,server/}node_modules/{@libsql/**,better-sqlite3/**/*.node,@napi-rs/canvas{,-linux-x64-gnu,-linux-arm64-gnu}/**,pdf-parse/dist/pdf-parse/cjs/pdf.worker.mjs}}",
       "excludeFiles": "{server/data/**,server/data/**/.*,server/uploads/**,server/uploads/**/.*,.env,.env.*,**/.env,**/.env.*}"
     }
   },
