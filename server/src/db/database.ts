@@ -1,5 +1,5 @@
 import type { DbConnection } from './adapter';
-import { LibsqlConnection } from './adapter';
+import { RemoteLibsqlConnection } from './remote-connection';
 import { readRemoteDatabaseConfig } from '../app-config/runtime';
 import { assertRemoteDatabaseReady } from './remote-schema';
 import path from 'path';
@@ -47,7 +47,7 @@ function initDb(): void {
   }
 
   if (remote) {
-    const connection = new LibsqlConnection(remote.url, remote.authToken);
+    const connection = new RemoteLibsqlConnection(remote.url, remote.authToken);
     try {
       assertRemoteDatabaseReady(connection);
       _db = connection;

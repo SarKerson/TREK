@@ -12,6 +12,8 @@ npm run typecheck:tests   # tsc over tests/ — CI runs this too; vitest green d
 npm run lint              # eslint --fix
 npm run lint:check        # eslint, no fix (CI)
 npm run test:runtime      # built Vercel HTTP entry + sanitizer + auth smoke (after build)
+npm run test:flows        # compiled HTTP login/save/upload, isolated local DB/storage and multiple processes
+npm run probe:release-blob # opt-in release-only private Blob OIDC check; see deployment guide
 npm run test              # vitest run; also test:unit / test:integration / test:ws / test:e2e
 npm run test:coverage     # istanbul coverage; per-domain ratchet over src/nest/**
 npm run gen:plugin-facts  # regenerate the plugin-protocol tables into plugin-sdk/ + shared/

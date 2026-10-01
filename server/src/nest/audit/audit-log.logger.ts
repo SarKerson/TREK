@@ -75,8 +75,17 @@ function writeToFile(line: string): void {
 // ── Public log helpers ────────────────────────────────────────────────────
 
 function formatTs(): string {
-  const tz = readEnv().app.tz || 'UTC';
-  return new Date().toLocaleString('sv-SE', { timeZone: tz }).replace(' ', 'T');
+  const now = new Date();
+  // POSIX hosts (including Lambda) may prefix an IANA zone with a colon.
+  // Intl does not accept that prefix or arbitrary system TZ strings.
+  const tz = (readEnv().app.tz || 'UTC').trim().replace(/^:/, '') || 'UTC';
+  try {
+    return now.toLocaleString('sv-SE', { timeZone: tz }).replace(' ', 'T');
+  } catch {
+    // Logging runs in response finish listeners too: invalid host configuration
+    // must never turn a completed request into an uncaught process exception.
+    return now.toISOString().slice(0, 19);
+  }
 }
 
 export function logInfo(msg: string): void {

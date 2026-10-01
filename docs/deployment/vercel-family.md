@@ -81,10 +81,22 @@ the browser, because static HTML cannot read per-instance database settings.
 
 ## Build and migration safety
 
+The request runtime opens a fresh native libsql connection for each standalone
+SQL execution and pins one connection for an entire synchronous transaction,
+including nested savepoints. SQL handles retain only SQL text between executions.
+This prevents a warm Vercel instance from reusing an expired Hrana HTTP stream.
+There are no automatic SQL or transaction retries: a lost write/commit response
+is an uncertain result, not permission to execute the mutation again. Release
+migrations retain their own connection because legacy migrations use temporary
+connection-local PRAGMAs. See the [Hrana HTTP lifetime specification](https://github.com/tursodatabase/libsql/blob/main/docs/HRANA_3_SPEC.md#hrana-over-http).
+
 `vercel.json` compiles shared contracts, typechecks/compiles Nest with decorator
 metadata, smoke-tests the compiled HTTP entry with the real Node loader, builds
 the client, then runs the remote release migration and SQL
 compatibility probe before publication. Request startup only checks readiness.
+The release probe uses the same connection facade as requests, waits 65 seconds
+between reads of a retained SQL handle, and repeats the rollback-only transaction
+checks after idle. It logs only progress and verification results.
 An unconfigured owner, wrong schema, SQL-probe failure, or active migration lock
 must stop startup rather than fall back to local SQLite or default credentials.
 The schema check requires an exact release version: a migration can make old
@@ -130,6 +142,27 @@ an existing user database, or a later schema version; those require investigatio
 New ordinary initial builds now reject invalid owner credentials before acquiring
 a lock or changing schema.
 
+### One-off private Blob release probe
+
+For an explicitly approved storage verification build, temporarily set
+`TREK_RELEASE_BLOB_PROBE=1` on the intended deployment environment. The normal
+build command invokes `server/scripts/probe-release-blob.mjs` after the database
+migration/probe. With the flag unset it does nothing; any other value fails.
+Remove the flag after the successful one-off build.
+
+The probe uses the already connected `BLOB_STORE_ID` and the build's ambient
+Vercel OIDC identity. It disables legacy-token fallback in its own process so
+a successful check actually verifies OIDC. It writes one tiny, uniquely named
+private object under `release-probe/`, verifies metadata, exact bytes through the
+compiled storage driver, byte ranges, and anonymous access denial, then deletes
+only that object in `finally` and verifies its absence. It never lists or modifies
+family objects, prints credentials, creates credentials, or exposes an HTTP
+diagnostic endpoint. A failed check or unverified cleanup fails the build.
+
+This proves build-time storage access and the compiled driver, not a successful
+owner login, browser presigned-upload flow, or the deployed Function's identity.
+Those still require their own live verification.
+
 ## Verification
 
 Run checks serially on a memory-constrained machine:
@@ -145,6 +178,7 @@ npm run test --workspace=server -- --maxWorkers=1
 npm run test --workspace=client -- --maxWorkers=1
 npm run build --workspace=server
 npm run test:runtime --workspace=server
+npm run test:flows --workspace=server
 npm run build --workspace=client
 ```
 
@@ -155,6 +189,17 @@ to Turso/Blob. It also catches SDK subpath imports that test aliases can conceal
 It extracts real text from a small PDF, then repeats startup with the native
 canvas package unavailable: health/auth/text must still work and only PDF
 extraction may fail with a bounded warning. PDF parsing is lazy-loaded.
+
+The compiled HTTP flow test copies build artifacts to a disposable directory and
+uses only fixture credentials, a local SQLite file, and local file storage. No
+service mocks or deployment environment files are loaded. It checks real login,
+password change and old-session revocation, trip create/read/update and idempotent
+replay between independent processes, upload/download byte equality,
+Range/HEAD/ETag, anonymous and cross-owner denial, blocked file types, one-use download tokens,
+and persistence after both original processes stop. The current forced-password
+policy is a client-visible flag/UI flow; this check does not claim the server
+blocks all API access before the password changes. Local success does not prove
+Turso, Blob OIDC/direct upload, Vercel routing, or browser behavior.
 
 Vercel's file tracing does not detect PDF.js's dynamic canvas/worker loads.
 `includeFiles` explicitly retains the canvas wrapper, Linux glibc native binding,

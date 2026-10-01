@@ -23,7 +23,9 @@
     "test:ws": "vitest run tests/websocket",
     "test:e2e": "vitest run tests/e2e",
     "test:coverage": "vitest run --coverage",
-    "test:runtime": "node --experimental-require-module scripts/smoke-vercel-runtime.cjs && node --experimental-require-module scripts/smoke-vercel-runtime.cjs --without-canvas"
+    "test:runtime": "node --experimental-require-module scripts/smoke-vercel-runtime.cjs && node --experimental-require-module scripts/smoke-vercel-runtime.cjs --without-canvas",
+    "test:flows": "node --experimental-require-module scripts/smoke-user-flows.cjs",
+    "probe:release-blob": "node --experimental-require-module scripts/probe-release-blob.mjs"
   },
   "dependencies": {
     "@aws-lite/client": "^0.23.7",

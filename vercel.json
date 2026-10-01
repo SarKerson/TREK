@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "buildCommand": "npm run build --workspace=shared && npm run typecheck --workspace=server && npm run build --workspace=server && npm run test:runtime --workspace=server && npm run build --workspace=client && node server/scripts/migrate-remote.mjs",
+  "buildCommand": "npm run build --workspace=shared && npm run typecheck --workspace=server && npm run build --workspace=server && npm run test:runtime --workspace=server && npm run build --workspace=client && node server/scripts/migrate-remote.mjs && node server/scripts/probe-release-blob.mjs",
   "outputDirectory": "client/dist",
   "functions": {
     "api/index.js": {
