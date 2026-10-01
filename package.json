@@ -17,6 +17,7 @@
     "version:prerelease": "npm version prerelease --preid=pre --workspaces --include-workspace-root --no-git-tag-version",
     "dev": "npm run build --workspace=shared && concurrently --names shared,server,client \"npm run build:watch --workspace=shared\" \"npm run dev --workspace=server\" \"npm run dev --workspace=client\"",
     "build": "npm run build --workspace=shared && npm run build --workspace=server && npm run build --workspace=client",
+    "build:vercel": "npm run build --workspace=shared && npm run typecheck --workspace=server && npm run build --workspace=server && npm run test:runtime --workspace=server && npm run build --workspace=client && node server/scripts/migrate-remote.mjs && node server/scripts/probe-release-blob.mjs",
     "test": "npm run test --workspace=shared && npm run test --workspace=server && npm run test --workspace=client",
     "test:cov": "npm run test:coverage --workspace=shared && npm run test:coverage --workspace=server && npm run test:coverage --workspace=client && npm run test:coverage --prefix plugin-sdk",
     "test:e2e": "npm run test:e2e --workspace=server",

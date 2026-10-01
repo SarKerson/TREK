@@ -90,6 +90,18 @@ it('packages the HTTP server, native databases, and WebSocket rewrite', () => {
   const entry = readFileSync(resolve(root, 'api/index.js'), 'utf8');
   expect(entry).toContain("require('../server/dist/vercel').default");
   const config = JSON.parse(readFileSync(resolve(root, 'vercel.json'), 'utf8'));
+  const manifest = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
+  expect(config.buildCommand.length).toBeLessThanOrEqual(256);
+  expect(config.buildCommand).toBe('npm run build:vercel');
+  expect(manifest.scripts['build:vercel'].split(' && ')).toEqual([
+    'npm run build --workspace=shared',
+    'npm run typecheck --workspace=server',
+    'npm run build --workspace=server',
+    'npm run test:runtime --workspace=server',
+    'npm run build --workspace=client',
+    'node server/scripts/migrate-remote.mjs',
+    'node server/scripts/probe-release-blob.mjs',
+  ]);
   expect(config.rewrites).toContainEqual({ source: '/ws', destination: '/api/index' });
   expect(config.functions['api/index.js'].includeFiles.length).toBeLessThanOrEqual(256);
   expect(config.functions['api/index.js'].excludeFiles.length).toBeLessThanOrEqual(256);
