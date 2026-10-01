@@ -24,6 +24,17 @@ import {
 // edit, not the test (parity is law).
 
 describe('deriveApp', () => {
+  it('normalizes host TZ without caching or changing unset per-caller defaults', () => {
+    expect(deriveApp({ TZ: ':UTC' }).tz).toBe('UTC');
+    expect(deriveApp({ TZ: ':Asia/Tokyo' }).tz).toBe('Asia/Tokyo');
+    expect(deriveApp({ TZ: 'America/New_York' }).tz).toBe('America/New_York');
+    expect(deriveApp({ TZ: 'Invalid/Timezone' }).tz).toBe('UTC');
+    expect(deriveApp({ TZ: ':' }).tz).toBe('UTC');
+    expect(deriveApp({ TZ: '+08:00' }).tz).toBe('UTC');
+    expect(deriveApp({}).tz).toBeUndefined();
+    expect(deriveApp({ TZ: '' }).tz).toBeUndefined();
+  });
+
   it('NODE_ENV: loose helpers lowercase, isTest stays case-sensitive (db/database.ts)', () => {
     expect(deriveApp({ NODE_ENV: 'PRODUCTION' }).isProduction).toBe(true);
     expect(deriveApp({ NODE_ENV: 'Development' }).isDevelopment).toBe(true);

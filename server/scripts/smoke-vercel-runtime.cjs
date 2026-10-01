@@ -60,6 +60,7 @@ function request(url) {
 process.env = {
   NODE_ENV: 'test',
   VERCEL: '1',
+  TZ: ':UTC',
   LOG_LEVEL: 'error',
   COOKIE_SECURE: 'false',
   JWT_SECRET: 'runtime-smoke-signing-fixture-not-a-secret',
@@ -86,6 +87,11 @@ async function main() {
     const response = await request(`${origin}/api/health`);
     assert.equal(response.status, 200);
     assert.deepEqual(JSON.parse(response.body), { status: 'ok' });
+    const configResponse = await request(`${origin}/api/auth/app-config`);
+    assert.equal(configResponse.status, 200);
+    const { timezone } = JSON.parse(configResponse.body);
+    assert.equal(timezone, 'UTC');
+    assert.doesNotThrow(() => new Intl.DateTimeFormat('en', { timeZone: timezone }).format(0));
     const protectedResponse = await request(`${origin}/api/trips`);
     assert.equal(protectedResponse.status, 401);
     const { extractText } = require('../dist/nest/llm-parse/text-extract.js');
@@ -98,7 +104,7 @@ async function main() {
       assert.equal(await extractText(pdfFixture(), 'booking.pdf'), 'Runtime PDF extraction works');
     }
     process.stdout.write(
-      `[runtime smoke] Health, auth, sanitizer and PDF ${withoutCanvas ? 'isolation' : 'extraction'} passed\n`,
+      `[runtime smoke] Health, app-config timezone, auth, sanitizer and PDF ${withoutCanvas ? 'isolation' : 'extraction'} passed\n`,
     );
   } finally {
     server.closeAllConnections();

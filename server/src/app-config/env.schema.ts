@@ -56,6 +56,7 @@ export const envSchema = z.object({
   HOST: anyString,
   // NODE_ENV and TZ are deliberately unvalidated: non-standard values (e.g.
   // NODE_ENV=staging) behave as "not production" today and must keep booting.
+  // Host TZ is normalized by deriveApp, with UTC fallback instead of a boot error.
   NODE_ENV: anyString,
   TZ: anyString,
   LOG_LEVEL: oneOf(['error', 'warn', 'info', 'debug']),

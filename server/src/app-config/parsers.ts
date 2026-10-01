@@ -29,6 +29,26 @@ export function parseBool(raw: string | undefined): boolean | undefined {
   return undefined;
 }
 
+/**
+ * Host TZ values may have a POSIX colon prefix (Lambda uses :UTC). Return an
+ * Intl-compatible named zone for every explicit value; malformed host strings
+ * fall back to UTC. Unset/blank retains each consumer's existing default.
+ */
+export function normalizeTimezone(raw: string | undefined): string | undefined {
+  const configured = raw?.trim();
+  if (!configured) return undefined;
+  const timeZone = configured.replace(/^:/, '');
+  if (!timeZone || timeZone === 'UTC' || /^[+-]/.test(timeZone)) return 'UTC';
+  try {
+    // Keep valid zone names unchanged. Numeric offsets are not IANA names and
+    // are not uniformly supported by clients or the scheduling library.
+    new Intl.DateTimeFormat('en', { timeZone }).format(0);
+    return timeZone;
+  } catch {
+    return 'UTC';
+  }
+}
+
 /** `Number(raw) || fallback` — NaN, 0 and '' all fall back (PORT, plugin limits). */
 export function numberOr(raw: string | undefined, fallback: number): number {
   return Number(raw) || fallback;

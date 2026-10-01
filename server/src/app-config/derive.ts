@@ -2,7 +2,8 @@
  * Pure per-namespace derive functions: (raw env) → typed config namespace.
  *
  * Every field pins the EXACT coercion of the call site(s) it replaces — parity
- * is law — with ONE deliberate exception: boolean switches are unified through
+ * is law — with deliberate safety exceptions: host TZ values are normalized
+ * to named zones, and boolean switches are unified through
  * parseBool (true/1/on/yes vs false/0/off/no, any casing), because the legacy
  * per-site literals ('true' here, '1' there, 'on' elsewhere) were an accident,
  * not a contract. Where sites apply different DEFAULTS for the same variable
@@ -19,6 +20,7 @@ import {
   csvList,
   csvListFiltered,
   numberOr,
+  normalizeTimezone,
   parseBool,
   parseDurationMs,
   parseLinkLocalAllowList,
@@ -47,7 +49,8 @@ export function deriveApp(raw: RawEnv) {
     appVersion: raw.APP_VERSION,
     /** Raw APP_URL — trailing-slash stripping differs per site (feeds strips one, notifications strips all). */
     appUrl: raw.APP_URL,
-    tz: raw.TZ,
+    /** Normalized host TZ; malformed values become UTC rather than reaching Intl/cron clients. */
+    tz: normalizeTimezone(raw.TZ),
     logLevel: raw.LOG_LEVEL,
     /** Resolved: lowercased, validated against the supported set, falls back to 'en' (src/config.ts semantics). */
     defaultLanguage: resolveDefaultLanguage(raw.DEFAULT_LANGUAGE),

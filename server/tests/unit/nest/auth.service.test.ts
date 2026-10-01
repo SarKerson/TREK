@@ -548,6 +548,24 @@ describe('verifyMfaLogin — validation', () => {
 // ---------------------------------------------------------------------------
 
 describe('getAppConfig', () => {
+  it.each([
+    [':UTC', 'UTC'],
+    [':America/New_York', 'America/New_York'],
+    ['Asia/Shanghai', 'Asia/Shanghai'],
+    [' Europe/Berlin ', 'Europe/Berlin'],
+    ['Invalid/Timezone', 'UTC'],
+    ['::UTC', 'UTC'],
+  ])('publishes an Intl-compatible timezone for host TZ=%s', (tz, expected) => {
+    vi.stubEnv('TZ', tz);
+    try {
+      const { timezone } = svc.getAppConfig(null);
+      expect(timezone).toBe(expected);
+      expect(() => new Intl.DateTimeFormat('en', { timeZone: timezone }).format(0)).not.toThrow();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('AUTH-DB-050: anonymous caller gets toggles/version and no permissions block', () => {
     vi.stubEnv('OIDC_ONLY', '');
     createUser(testDb);
