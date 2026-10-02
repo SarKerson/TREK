@@ -374,6 +374,82 @@ describe('PlaceInspector', () => {
     expect(vi.mocked(mapsApi.details)).not.toHaveBeenCalled();
   });
 
+  it.each(['success', 'failure'] as const)(
+    'changing the linked place clears old phone and hours while details load and after %s',
+    async (outcome) => {
+      type DetailsResponse = Awaited<ReturnType<typeof mapsApi.details>>;
+      let resolveDetails!: (value: DetailsResponse) => void;
+      let rejectDetails!: (reason: Error) => void;
+      const nextDetails = new Promise<DetailsResponse>((resolve, reject) => {
+        resolveDetails = resolve;
+        rejectDetails = reject;
+      });
+      vi.mocked(mapsApi.details)
+        .mockResolvedValueOnce({
+          place: { phone: '+81 6 1111 2222', opening_hours: ['Monday: 09:00 – 18:00'] },
+        })
+        .mockReturnValueOnce(nextDetails);
+      const oldPlace = buildPlace({
+        id: 205,
+        google_place_id: `gp-replaced-${outcome}`,
+        osm_id: null,
+        phone: null,
+      });
+      const { rerender } = render(<PlaceInspector {...defaultProps} place={oldPlace} />);
+      expect(await screen.findByText('+81 6 1111 2222')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /Show opening hours|Monday: 09:00/ }));
+      expect(screen.getByText('Monday: 09:00 – 18:00')).toBeInTheDocument();
+
+      const nextId = outcome === 'success' ? 'node:920501' : 'node:920502';
+      rerender(<PlaceInspector {...defaultProps} place={{ ...oldPlace, google_place_id: null, osm_id: nextId }} />);
+      expect(vi.mocked(mapsApi.details)).toHaveBeenLastCalledWith(nextId, expect.any(String));
+      expect(screen.queryByText('+81 6 1111 2222')).not.toBeInTheDocument();
+      expect(screen.queryByText('Monday: 09:00 – 18:00')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /opening hours/i })).not.toBeInTheDocument();
+
+      await act(async () => {
+        if (outcome === 'success') {
+          resolveDetails({ place: { phone: '+81 6 3333 4444', opening_hours: ['Monday: 10:00 – 19:00'] } });
+        } else {
+          rejectDetails(new Error('Details unavailable'));
+        }
+      });
+      expect(screen.queryByText('+81 6 1111 2222')).not.toBeInTheDocument();
+      expect(screen.queryByText('Monday: 09:00 – 18:00')).not.toBeInTheDocument();
+      if (outcome === 'success') {
+        expect(screen.getByText('+81 6 3333 4444')).toBeInTheDocument();
+        expect(screen.getByText('Monday: 10:00 – 19:00')).toBeInTheDocument();
+      } else {
+        expect(screen.queryByRole('button', { name: /opening hours/i })).not.toBeInTheDocument();
+      }
+    },
+  );
+
+  it('clearing linked IDs prevents a late details response from restoring old phone and hours', async () => {
+    type DetailsResponse = Awaited<ReturnType<typeof mapsApi.details>>;
+    let resolveDetails!: (value: DetailsResponse) => void;
+    const pendingDetails = new Promise<DetailsResponse>((resolve) => { resolveDetails = resolve; });
+    vi.mocked(mapsApi.details).mockReturnValueOnce(pendingDetails);
+    const linkedPlace = buildPlace({
+      id: 206,
+      google_place_id: 'gp-cleared-before-response',
+      osm_id: null,
+      phone: null,
+    });
+    const { rerender } = render(<PlaceInspector {...defaultProps} place={linkedPlace} />);
+    expect(vi.mocked(mapsApi.details)).toHaveBeenCalledWith('gp-cleared-before-response', expect.any(String));
+
+    rerender(<PlaceInspector {...defaultProps} place={{ ...linkedPlace, google_place_id: null, osm_id: null }} />);
+    await act(async () => {
+      resolveDetails({ place: { phone: '+81 6 5555 6666', opening_hours: ['Monday: 11:00 – 20:00'] } });
+    });
+
+    expect(screen.queryByText('+81 6 5555 6666')).not.toBeInTheDocument();
+    expect(screen.queryByText('Monday: 11:00 – 20:00')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /opening hours/i })).not.toBeInTheDocument();
+    expect(vi.mocked(mapsApi.details)).toHaveBeenCalledTimes(1);
+  });
+
   // ── Files ──────────────────────────────────────────────────────────────────
 
   it('FE-PLANNER-INSPECTOR-028: files section shows file names after expanding', async () => {

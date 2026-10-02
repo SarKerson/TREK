@@ -62,6 +62,7 @@ const places: TranslationStrings = {
   'places.allPlanned': '모든 장소가 계획되었습니다',
   'places.noneFound': '장소를 찾을 수 없습니다',
   'places.editPlace': '장소 편집',
+  'places.clearProviderDetails': '연결된 정보 및 전화번호 지우기',
   'places.formName': '이름',
   'places.formNamePlaceholder': '예: 에펠탑',
   'places.formDescription': '설명',

@@ -53,6 +53,7 @@ const places: TranslationStrings = {
   'places.allPlanned': 'Wszystkie miejsca są zaplanowane',
   'places.noneFound': 'Nie znaleziono miejsc',
   'places.editPlace': 'Edytuj miejsce',
+  'places.clearProviderDetails': 'Wyczyść powiązane dane i telefon',
   'places.formName': 'Nazwa',
   'places.formNamePlaceholder': 'np. Wieża Eiffla',
   'places.formDescription': 'Opis',

@@ -3,6 +3,9 @@ import { MapPin, Plus } from 'lucide-react'
 import MSheet from '../../../components/MSheet'
 import {
   DEFAULT_FORM,
+  changePlaceFormField,
+  clearProviderDetails,
+  providerDetails,
   mergeResult,
   type PlaceFormData,
   type ResultField,
@@ -11,6 +14,7 @@ import { Eyebrow, FIELD_AREA_CLS, FIELD_CLS, FormSheetFooter, FormSheetHeader } 
 import { useAddonStore } from '../../../../store/addonStore'
 import type { BookingExpenseRequest } from '../../../../components/Planner/BookingCostsSection.types'
 import PlPlaceSearch, { type PlSearchPick } from './PlPlaceSearch'
+import ClearPlaceDetailsButton from '../../../../components/Planner/ClearPlaceDetailsButton'
 import PlCategoryPicker from './PlCategoryPicker'
 import PlTimeFields from './PlTimeFields'
 import PlFileAttach from './PlFileAttach'
@@ -87,6 +91,7 @@ export default function MPlaceEditSheet({ planner, onOpenExpense }: MPlaceEditSh
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const [isSaving, setIsSaving] = useState(false)
   const [resolvingPick, setResolvingPick] = useState(false)
+  const [selectionRevision, setSelectionRevision] = useState(0)
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null)
   const isBudgetEnabled = useAddonStore(s => s.isEnabled('budget'))
   // Set right before submit: the place has to exist before an expense can point
@@ -119,6 +124,7 @@ export default function MPlaceEditSheet({ planner, onOpenExpense }: MPlaceEditSh
   // Prefill on open — same source order as the desktop form: editing place
   // (times off the in-context assignment), map/POI prefill coords, blank.
   useEffect(() => {
+    setSelectionRevision(value => value + 1)
     if (!showPlaceForm) return
     setSheetPlace(editingPlace)
     setSheetAssignmentId(editingAssignmentId)
@@ -137,6 +143,7 @@ export default function MPlaceEditSheet({ planner, onOpenExpense }: MPlaceEditSh
         notes: editingPlace.notes || '',
         transport_mode: editingPlace.transport_mode || 'walking',
         website: editingPlace.website || '',
+        ...providerDetails(editingPlace),
         // The day-specific note rides only with an assignment in context (#2163);
         // otherwise the key stays absent so submit never sends a notes write.
         ...(assignment ? { assignment_notes: assignment.notes || '' } : {}),
@@ -180,7 +187,13 @@ export default function MPlaceEditSheet({ planner, onOpenExpense }: MPlaceEditSh
   const handleChange = (field: keyof PlaceFormData, value: string) => {
     // Typed by hand, so the next pick must leave it alone.
     autoFilledRef.current.delete(field as ResultField)
-    setForm(prev => ({ ...prev, [field]: value }))
+    if (field === 'lat' || field === 'lng') setSelectionRevision(revision => revision + 1)
+    setForm(prev => changePlaceFormField(prev, field, value))
+  }
+
+  const handleClearProviderDetails = () => {
+    setSelectionRevision(revision => revision + 1)
+    setForm(clearProviderDetails)
   }
 
   // Same fix as the desktop dialog, same helper. `?? prev.X` cannot tell a
@@ -207,7 +220,8 @@ export default function MPlaceEditSheet({ planner, onOpenExpense }: MPlaceEditSh
     const match = text.match(/^(-?\d+(?:\.\d*)?)(?:\s*[,;]\s*|\s+)(-?\d+(?:\.\d*)?)$/)
     if (match) {
       e.preventDefault()
-      setForm(prev => ({ ...prev, lat: match[1], lng: match[2] }))
+      handleChange('lat', match[1])
+      handleChange('lng', match[2])
     }
   }
 
@@ -308,7 +322,7 @@ export default function MPlaceEditSheet({ planner, onOpenExpense }: MPlaceEditSh
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto px-[18px] pb-[6px] pt-[2px]" onPaste={handlePaste}>
-        <PlPlaceSearch planner={planner} locationBias={locationBias} onPick={applyPick} onResolvingChange={setResolvingPick} />
+        <PlPlaceSearch planner={planner} locationBias={locationBias} onPick={applyPick} onResolvingChange={setResolvingPick} selectionRevision={selectionRevision} />
 
         <Eyebrow className="mb-[5px] mt-3 uppercase">{t('places.formName')} *</Eyebrow>
         <input
@@ -365,6 +379,8 @@ export default function MPlaceEditSheet({ planner, onOpenExpense }: MPlaceEditSh
             className={`${FIELD_CLS} flex-1 text-[0.8125rem] [font-variant-numeric:tabular-nums]`}
           />
         </div>
+
+        <ClearPlaceDetailsButton form={form} onClear={handleClearProviderDetails} t={t} />
 
         <Eyebrow className="mb-[6px] mt-3 uppercase">{t('places.formCategory')}</Eyebrow>
         <PlCategoryPicker planner={planner} value={form.category_id} onChange={id => handleChange('category_id', id)} />

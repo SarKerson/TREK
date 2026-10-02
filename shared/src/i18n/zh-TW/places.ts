@@ -62,6 +62,7 @@ const places: TranslationStrings = {
   'places.allPlanned': '所有地點已規劃',
   'places.noneFound': '未找到地點',
   'places.editPlace': '編輯地點',
+  'places.clearProviderDetails': '清除連結詳情與電話號碼',
   'places.formName': '名稱',
   'places.formNamePlaceholder': '如：埃菲爾鐵塔',
   'places.formDescription': '描述',

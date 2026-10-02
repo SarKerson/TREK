@@ -63,6 +63,7 @@ const places: TranslationStrings = {
   'places.allPlanned': 'Все места запланированы',
   'places.noneFound': 'Места не найдены',
   'places.editPlace': 'Редактировать место',
+  'places.clearProviderDetails': 'Очистить связанные сведения и телефон',
   'places.formName': 'Название',
   'places.formNamePlaceholder': 'напр. Эйфелева башня',
   'places.formDescription': 'Описание',

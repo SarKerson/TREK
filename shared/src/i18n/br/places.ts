@@ -63,6 +63,7 @@ const places: TranslationStrings = {
   'places.allPlanned': 'Todos os lugares estão planejados',
   'places.noneFound': 'Nenhum lugar encontrado',
   'places.editPlace': 'Editar lugar',
+  'places.clearProviderDetails': 'Limpar detalhes vinculados e telefone',
   'places.formName': 'Nome',
   'places.formNamePlaceholder': 'ex.: Torre Eiffel',
   'places.formDescription': 'Descrição',

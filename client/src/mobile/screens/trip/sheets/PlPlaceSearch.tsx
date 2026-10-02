@@ -4,6 +4,7 @@ import { mapsApi } from '../../../../api/client'
 import { useAuthStore } from '../../../../store/authStore'
 import { offersGoogleRetry, selectGoogleHoldsSlot, sourceLabelFor } from '../../../../utils/placeSource'
 import { recordPlacePick } from '../../../../api/placeShadow'
+import { matchingSuggestionPlace, placeFromSuggestion } from '../../../../utils/placeSuggestion'
 import { PlacesSession } from '../../../../utils/placesSession'
 import { isMapUrl } from '../../../../components/Planner/PlaceFormModal.helpers'
 import { getApiErrorMessage } from '../../../../utils/apiError'
@@ -54,6 +55,8 @@ interface PlPlaceSearchProps {
   onPick: (pick: PlSearchPick) => void
   /** True while a suggestion's details are being resolved (name spinner). */
   onResolvingChange?: (resolving: boolean) => void
+  /** Manual corrections supersede any lookup still in flight. */
+  selectionRevision?: number
 }
 
 /** "48.8566, 2.3522" (also ; or whitespace separated) → direct coordinates. */
@@ -80,12 +83,13 @@ function placeToPick(place: MapsPlace): PlSearchPick {
  * centre, autocomplete dropdown, plus Google-Maps-URL and "lat, lng" paste
  * detection — the mobile counterpart of PlaceFormModal's search block.
  */
-export default function PlPlaceSearch({ planner, locationBias, onPick, onResolvingChange }: PlPlaceSearchProps) {
+export default function PlPlaceSearch({ planner, locationBias, onPick, onResolvingChange, selectionRevision = 0 }: PlPlaceSearchProps) {
   const { t, language, toast } = planner
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<MapsPlace[]>([])
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [searching, setSearching] = useState(false)
+  const requestEpoch = useRef(0)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   // One Google billing session per search (see utils/placesSession).
@@ -107,6 +111,12 @@ export default function PlPlaceSearch({ planner, locationBias, onPick, onResolvi
     },
     [onResolvingChange],
   )
+
+  useEffect(() => {
+    requestEpoch.current += 1
+    setResolving(false)
+    return () => { requestEpoch.current += 1 }
+  }, [selectionRevision, setResolving])
 
   const fetchSuggestions = useCallback(
     async (input: string) => {
@@ -178,6 +188,7 @@ export default function PlPlaceSearch({ planner, locationBias, onPick, onResolvi
     const trimmed = provider ? (searchMetaRef.current?.query ?? '') : query.trim()
     if (!trimmed) return
     setSuggestions([])
+    const epoch = ++requestEpoch.current
 
     // "lat, lng" paste → straight to coordinates, no lookup needed.
     const coords = trimmed.match(COORD_RE)
@@ -191,6 +202,7 @@ export default function PlPlaceSearch({ planner, locationBias, onPick, onResolvi
     try {
       if (!provider && isMapUrl(trimmed)) {
         const resolved = await mapsApi.resolveUrl(trimmed)
+        if (epoch !== requestEpoch.current) return
         if (resolved.lat && resolved.lng) {
           onPick({
             name: resolved.name || undefined,
@@ -207,25 +219,29 @@ export default function PlPlaceSearch({ planner, locationBias, onPick, onResolvi
       // Derselbe Hinweis, den die Vervollstaendigung schon bekommt: die Suche
       // braucht ihn genauso, nur als Punkt statt als Kasten.
       const result = await mapsApi.search(trimmed, language, pointFromBox(locationBias), provider)
+      if (epoch !== requestEpoch.current) return
       searchMetaRef.current = { query: trimmed, source: result.source || 'unknown' }
       setResults(result.places || [])
       setSearchSource(result.source || '')
     } catch (err: unknown) {
+      if (epoch !== requestEpoch.current) return
       toast.error(getApiErrorMessage(err, t('places.mapsSearchError')))
     } finally {
-      setResolving(false)
-      placesSessionRef.current.end()
+      if (epoch === requestEpoch.current) {
+        setResolving(false)
+        placesSessionRef.current.end()
+      }
     }
   }
 
   const handleSelectSuggestion = async (suggestion: Suggestion) => {
+    const epoch = ++requestEpoch.current
     // Read before the list is cleared: this is the rank the user saw.
     const acRank = suggestions.findIndex(s => s.placeId === suggestion.placeId)
     const acCount = suggestions.length
     setSuggestions([])
     const previousQuery = query
     setQuery('')
-    onPick({ name: suggestion.mainText })
     setResolving(true)
     try {
       // Details are a fragile second hop (kill-switch, Overpass load) — fall
@@ -238,24 +254,13 @@ export default function PlPlaceSearch({ planner, locationBias, onPick, onResolvi
       } catch {
         // fall through to text search
       }
-      if (!place && suggestion.source === 'openstreetmap' && suggestion.lat != null && suggestion.lng != null) {
-        // The layer's second line is the local name, not an address, so joining
-        // the two makes a query nobody typed — and its first answer would be
-        // silently taken as the place the user picked. The row already knows
-        // where it is.
-        place = {
-          name: suggestion.mainText,
-          address: '',
-          lat: suggestion.lat,
-          lng: suggestion.lng,
-          osm_id: suggestion.placeId,
-          source: 'openstreetmap',
-        }
-      }
+      if (epoch !== requestEpoch.current) return
+      if (!place) place = placeFromSuggestion(suggestion)
       if (!place) {
         const fullQuery = [suggestion.mainText, suggestion.secondaryText].filter(Boolean).join(', ')
         const search = await mapsApi.search(fullQuery, language, pointFromBox(locationBias))
-        place = (search.places?.[0] as MapsPlace | undefined) ?? null
+        if (epoch !== requestEpoch.current) return
+        place = matchingSuggestionPlace(suggestion, search.places)
       }
       if (place) {
         applyPlace(place, acRank >= 0 ? { mode: 'autocomplete', rank: acRank, count: acCount } : undefined)
@@ -264,11 +269,14 @@ export default function PlPlaceSearch({ planner, locationBias, onPick, onResolvi
         toast.error(t('places.mapsSearchError'))
       }
     } catch (err: unknown) {
+      if (epoch !== requestEpoch.current) return
       setQuery(previousQuery)
       toast.error(getApiErrorMessage(err, t('places.mapsSearchError')))
     } finally {
-      setResolving(false)
-      placesSessionRef.current.end()
+      if (epoch === requestEpoch.current) {
+        setResolving(false)
+        placesSessionRef.current.end()
+      }
     }
   }
 

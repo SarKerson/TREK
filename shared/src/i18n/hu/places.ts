@@ -63,6 +63,7 @@ const places: TranslationStrings = {
   'places.allPlanned': 'Minden hely be van tervezve',
   'places.noneFound': 'Nem találhatók helyek',
   'places.editPlace': 'Hely szerkesztése',
+  'places.clearProviderDetails': 'Kapcsolt adatok és telefonszám törlése',
   'places.formName': 'Név',
   'places.formNamePlaceholder': 'pl. Eiffel-torony',
   'places.formDescription': 'Leírás',

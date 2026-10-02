@@ -61,6 +61,7 @@ const places: TranslationStrings = {
   'places.allPlanned': 'Tots els llocs estan planificats',
   'places.noneFound': "No s'han trobat llocs",
   'places.editPlace': 'Edita el lloc',
+  'places.clearProviderDetails': 'Esborra les dades vinculades i el telèfon',
   'places.formName': 'Nom',
   'places.formNamePlaceholder': 'p. ex. Torre Eiffel',
   'places.formDescription': 'Descripció',

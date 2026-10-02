@@ -63,6 +63,7 @@ const places: TranslationStrings = {
   'places.allPlanned': 'Všechna místa jsou naplánována',
   'places.noneFound': 'Žádná místa nebyla nalezena',
   'places.editPlace': 'Upravit místo',
+  'places.clearProviderDetails': 'Vymazat propojené údaje a telefon',
   'places.formName': 'Název',
   'places.formNamePlaceholder': 'např. Eiffelova věž',
   'places.formDescription': 'Popis',

@@ -63,6 +63,7 @@ const places: TranslationStrings = {
   'places.allPlanned': 'تم تخطيط جميع الأماكن',
   'places.noneFound': 'لم يتم العثور على أماكن',
   'places.editPlace': 'تعديل المكان',
+  'places.clearProviderDetails': 'مسح التفاصيل المرتبطة ورقم الهاتف',
   'places.formName': 'الاسم',
   'places.formNamePlaceholder': 'مثال: برج إيفل',
   'places.formDescription': 'الوصف',

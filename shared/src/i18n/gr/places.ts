@@ -63,6 +63,7 @@ const places: TranslationStrings = {
   'places.allPlanned': 'Όλα τα μέρη είναι προγραμματισμένα',
   'places.noneFound': 'Δεν βρέθηκαν μέρη',
   'places.editPlace': 'Επεξεργασία Μέρους',
+  'places.clearProviderDetails': 'Εκκαθάριση συνδεδεμένων στοιχείων και τηλεφώνου',
   'places.formName': 'Όνομα',
   'places.formNamePlaceholder': 'π.χ. Πύργος του Άιφελ',
   'places.formDescription': 'Περιγραφή',

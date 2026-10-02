@@ -63,6 +63,7 @@ const places: TranslationStrings = {
   'places.allPlanned': 'Alle plaatsen zijn gepland',
   'places.noneFound': 'Geen plaatsen gevonden',
   'places.editPlace': 'Plaats bewerken',
+  'places.clearProviderDetails': 'Gekoppelde gegevens en telefoonnummer wissen',
   'places.formName': 'Naam',
   'places.formNamePlaceholder': 'bijv. Eiffeltoren',
   'places.formDescription': 'Beschrijving',

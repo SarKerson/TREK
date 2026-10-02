@@ -109,6 +109,25 @@ export const RESULT_FIELDS = [
 
 export type ResultField = (typeof RESULT_FIELDS)[number]
 
+/** These hidden fields describe a provider identity, never the user's own notes. */
+export const PROVIDER_DETAIL_FIELDS = ['google_place_id', 'google_ftid', 'osm_id', 'amap_poi_id', 'phone'] as const
+
+type ProviderDetailField = (typeof PROVIDER_DETAIL_FIELDS)[number]
+
+export function providerDetails(source: Partial<Record<ProviderDetailField, string | null>>): Record<ProviderDetailField, string> {
+  return Object.fromEntries(PROVIDER_DETAIL_FIELDS.map(field => [field, source[field] || ''])) as Record<ProviderDetailField, string>
+}
+
+/** Explicit empty values remove saved metadata; an omitted key leaves it in the database. */
+export function clearProviderDetails(form: PlaceFormData): PlaceFormData {
+  return { ...form, ...providerDetails({}) }
+}
+
+export function changePlaceFormField(form: PlaceFormData, field: keyof PlaceFormData, value: string): PlaceFormData {
+  const changedLocation = (field === 'lat' || field === 'lng') && form[field] !== value
+  return { ...(changedLocation ? clearProviderDetails(form) : form), [field]: value }
+}
+
 /**
  * Folds a picked search result into the form.
  *
@@ -119,7 +138,11 @@ export type ResultField = (typeof RESULT_FIELDS)[number]
  * the airport's website is still sitting in the field. Save it and the station
  * now links to an airport.
  *
- * So the caller tracks which fields it filled in itself. A field the last pick
+ * Provider IDs and phone always belong to the selected place, including after
+ * reopening an edit. Explicitly clear those first so omitted result fields
+ * cannot leave the previous identity in the database.
+ *
+ * For editable text, the caller tracks which fields it filled in itself. A field the last pick
  * wrote belongs to the last place and is cleared when the new one says nothing
  * about it; a field the user typed survives untouched. `autoFilled` is mutated
  * in place — it is the caller's record of what it owns.
@@ -129,7 +152,7 @@ export function mergeResult(
   result: Record<string, unknown>,
   autoFilled: Set<ResultField>,
 ): PlaceFormData {
-  const next = { ...prev } as PlaceFormData & Record<string, string | undefined>
+  const next = clearProviderDetails(prev) as PlaceFormData & Record<string, string | undefined>
 
   for (const field of RESULT_FIELDS) {
     const raw = result[field]

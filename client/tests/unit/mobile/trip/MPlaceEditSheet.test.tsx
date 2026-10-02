@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { HttpResponse, http } from 'msw'
+import { mapsApi } from '../../../../src/api/client'
 import MPlaceEditSheet from '../../../../src/mobile/screens/trip/sheets/MPlaceEditSheet'
 import type { TripPlanner } from '../../../../src/mobile/screens/trip/MTripShell'
 import type { Assignment, Category, Place } from '../../../../src/types'
@@ -8,7 +9,7 @@ import { useAddonStore } from '../../../../src/store/addonStore'
 import { useTripStore } from '../../../../src/store/tripStore'
 import { server } from '../../../helpers/msw/server'
 import { resetAllStores, seedStore } from '../../../helpers/store'
-import { fireEvent, render, screen, waitFor } from '../../../helpers/render'
+import { act, fireEvent, render, screen, waitFor } from '../../../helpers/render'
 
 // FE-MOB-PLEDIT-001 to FE-MOB-PLEDIT-040, plus the 009b, 025b and 029b variants
 // planner.t echoes the key, so every label/placeholder is asserted as its key.
@@ -78,6 +79,61 @@ describe('MPlaceEditSheet', () => {
     expect(screen.getByPlaceholderText('https://')).toHaveValue('https://senso-ji.jp')
     expect(screen.getByRole('button', { name: /Food/ }).className).toContain('bg-m-act')
     expect(submit()).toHaveTextContent('common.save')
+  })
+
+  it.each(['lat', 'lng', 'paste', 'clear'])('removes saved provider metadata through the native %s correction path', async (action) => {
+    const { planner } = setup({ editingPlace: { ...EDITED, google_place_id: 'old-shop',
+      google_ftid: 'old-ftid', osm_id: 'node:old', amap_poi_id: 'amap:old', phone: '+81-shop' } })
+    if (action === 'clear') {
+      fireEvent.click(screen.getByRole('button', { name: 'places.clearProviderDetails' }))
+    } else if (action === 'paste') {
+      fireEvent.paste(screen.getByPlaceholderText('places.formLat'), { clipboardData: { getData: () => '34.665, 135.501' } })
+    } else {
+      fireEvent.change(screen.getByPlaceholderText(action === 'lat' ? 'places.formLat' : 'places.formLng'), { target: { value: '34.665' } })
+    }
+    expect(planner.handleSavePlace).not.toHaveBeenCalled()
+    fireEvent.click(submit())
+    await waitFor(() => expect(planner.handleSavePlace).toHaveBeenCalledOnce())
+    expect(planner.handleSavePlace).toHaveBeenCalledWith(expect.objectContaining({
+      name: EDITED.name, notes: EDITED.notes, description: EDITED.description, website: EDITED.website,
+      google_place_id: '', google_ftid: '', osm_id: '', amap_poi_id: '', phone: '',
+      ...(action === 'clear' ? { lat: EDITED.lat, lng: EDITED.lng } : {}),
+    }))
+  })
+
+  it.each(['clear', 'lat'])('ignores a late suggestion after a manual %s correction', async (action) => {
+    type Details = Awaited<ReturnType<typeof mapsApi.details>>
+    let resolveDetails!: (details: Details) => void
+    const pending = new Promise<Details>(resolve => { resolveDetails = resolve })
+    const detailsSpy = vi.spyOn(mapsApi, 'details').mockReturnValueOnce(pending)
+    server.use(http.post('/api/maps/autocomplete', () => HttpResponse.json({ suggestions: [{
+      placeId: 'shop', mainText: 'Pending shop', secondaryText: 'Namba',
+    }] })))
+    try {
+      const { planner } = setup({ editingPlace: { ...EDITED, google_place_id: 'old-shop', phone: '+81-old' } })
+      fireEvent.change(screen.getByPlaceholderText('places.mapsSearchPlaceholder'), { target: { value: 'Pending' } })
+      fireEvent.click(await screen.findByText('Pending shop'))
+      await waitFor(() => expect(detailsSpy).toHaveBeenCalled())
+      if (action === 'clear') fireEvent.click(screen.getByRole('button', { name: 'places.clearProviderDetails' }))
+      else fireEvent.change(screen.getByPlaceholderText('places.formLat'), { target: { value: '34.665' } })
+      await act(async () => { resolveDetails({ place: { name: 'Wrong shop', google_place_id: 'shop', lat: 1, lng: 2, phone: '+81-new' } }) })
+      fireEvent.click(submit())
+      await waitFor(() => expect(planner.handleSavePlace).toHaveBeenCalledOnce())
+      expect(planner.handleSavePlace).toHaveBeenCalledWith(expect.objectContaining({
+        name: EDITED.name, lat: action === 'lat' ? 34.665 : EDITED.lat, lng: EDITED.lng,
+        google_place_id: '', phone: '', notes: EDITED.notes, website: EDITED.website,
+      }))
+    } finally {
+      detailsSpy.mockRestore()
+    }
+  })
+
+  it('keeps saved provider metadata when only notes change', async () => {
+    const { planner } = setup({ editingPlace: { ...EDITED, google_place_id: 'station', phone: '+81-station' } })
+    fireEvent.change(screen.getByPlaceholderText('places.formNotesPlaceholder'), { target: { value: 'Meet later' } })
+    fireEvent.click(submit())
+    await waitFor(() => expect(planner.handleSavePlace).toHaveBeenCalledOnce())
+    expect(planner.handleSavePlace).toHaveBeenCalledWith(expect.objectContaining({ google_place_id: 'station', phone: '+81-station' }))
   })
 
   it('FE-MOB-PLEDIT-004: leaves optional fields blank when the place has none', () => {

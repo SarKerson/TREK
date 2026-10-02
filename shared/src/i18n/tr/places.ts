@@ -65,6 +65,7 @@ const places: TranslationStrings = {
   'places.allPlanned': 'Bütün yerler planlandı',
   'places.noneFound': 'Hiçbir yer bulunamadı',
   'places.editPlace': 'Yeri Düzenle',
+  'places.clearProviderDetails': 'Bağlı ayrıntıları ve telefonu temizle',
   'places.formName': 'İsim',
   'places.formNamePlaceholder': 'örneğin Eyfel Kulesi',
   'places.formDescription': 'Tanım',

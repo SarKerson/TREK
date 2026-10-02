@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isAmapUrl, isGoogleMapsUrl, isMapUrl } from './PlaceFormModal.helpers'
+import { DEFAULT_FORM, clearProviderDetails, changePlaceFormField, mergeResult, isAmapUrl, isGoogleMapsUrl, isMapUrl } from './PlaceFormModal.helpers'
 
 describe('isGoogleMapsUrl', () => {
   it('accepts the short share hosts', () => {
@@ -59,5 +59,31 @@ describe('isMapUrl', () => {
     expect(isMapUrl('https://maps.app.goo.gl/abc123')).toBe(true)
     expect(isMapUrl('https://uri.amap.com/marker?position=116.397,39.908')).toBe(true)
     expect(isMapUrl('https://example.com/maps')).toBe(false)
+  })
+})
+
+
+describe('saved provider identity', () => {
+  it('explicitly clears persisted identities and phone omitted by a replacement pick', () => {
+    const form = { ...DEFAULT_FORM, name: 'Nankai Station', notes: 'Meet at the gates',
+      website: 'https://my-trip.example', google_place_id: 'old-shop', google_ftid: 'old-ftid',
+      osm_id: 'node:1', amap_poi_id: 'amap:old', phone: '+81-old-shop' }
+    const next = mergeResult(form, { name: 'Namba', lat: 34.665, lng: 135.501, osm_id: 'node:2' }, new Set())
+    expect(next).toMatchObject({ google_place_id: '', google_ftid: '', amap_poi_id: '', phone: '',
+      osm_id: 'node:2', notes: form.notes, website: form.website })
+  })
+})
+
+
+describe('manual provider cleanup', () => {
+  const saved = { ...DEFAULT_FORM, name: 'Our station', lat: '34.665', lng: '135.501',
+    website: 'https://mine.example', description: 'Our meeting point', notes: 'Meet at gates',
+    google_place_id: 'old-shop', phone: '+81-shop' }
+  it('keeps all user fields and coordinates, and explicitly clears every hidden linked field', () => {
+    expect(clearProviderDetails(saved)).toEqual({ ...saved, google_place_id: '', google_ftid: '', osm_id: '', amap_poi_id: '', phone: '' })
+  })
+  it('preserves an identity for unrelated edits or unchanged coordinates', () => {
+    expect(changePlaceFormField(saved, 'lat', saved.lat)).toEqual(saved)
+    expect(changePlaceFormField(saved, 'notes', 'New note')).toEqual({ ...saved, notes: 'New note' })
   })
 })

@@ -63,6 +63,7 @@ const places: TranslationStrings = {
   'places.allPlanned': 'Alla platser är planerade',
   'places.noneFound': 'Inga platser hittades',
   'places.editPlace': 'Redigera plats',
+  'places.clearProviderDetails': 'Rensa länkade uppgifter och telefonnummer',
   'places.formName': 'Namn',
   'places.formNamePlaceholder': 't.ex. Eiffeltornet',
   'places.formDescription': 'Beskrivning',

@@ -23,7 +23,7 @@ const LOUVRE = {
   phone: '+33 1',
 }
 
-const SUGGESTION = { placeId: 'sug-1', mainText: 'Louvre', secondaryText: 'Paris, France' }
+const SUGGESTION = { placeId: 'ChIJ_louvre', mainText: 'Louvre', secondaryText: 'Paris, France' }
 
 /** Bodies of every autocomplete request the component fired. */
 let autocompleteBodies: Record<string, unknown>[] = []
@@ -118,9 +118,8 @@ describe('PlPlaceSearch', () => {
     expect(pointerDown).toBe(false)
     fireEvent.click(row)
 
-    // Optimistic name first, then the full record.
-    expect(onPick).toHaveBeenNthCalledWith(1, { name: 'Louvre' })
-    await waitFor(() => expect(onPick).toHaveBeenCalledTimes(2))
+    // Only a resolved identity changes the form.
+    await waitFor(() => expect(onPick).toHaveBeenCalledTimes(1))
     expect(onPick).toHaveBeenLastCalledWith({
       name: 'Louvre Museum',
       address: 'Rue de Rivoli, Paris',
@@ -145,21 +144,21 @@ describe('PlPlaceSearch', () => {
     fireEvent.change(input, { target: { value: 'Lou' } })
     fireEvent.click(await screen.findByText('Louvre'))
 
-    await waitFor(() => expect(onPick).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(onPick).toHaveBeenCalledTimes(1))
     expect(searchBodies[0]).toEqual({ query: 'Louvre, Paris, France' })
     expect(onPick).toHaveBeenLastCalledWith(expect.objectContaining({ name: 'Louvre Museum', lat: '48.8606' }))
   })
 
-  it('FE-MOB-PLSRCH-005b: an OpenStreetMap row keeps its own coordinates instead of searching for its label', async () => {
+  it.each([['openstreetmap', 'node:9712313'], ['trek-places', 'gers:station']])('a %s row keeps its own coordinates instead of searching for its label', async (source, placeId) => {
     // The layer's second line is the name written on the building, not an
     // address, so joining the two asks a question nobody typed — and whatever
     // came back first was taken as the place the user had already picked.
     server.use(
       recordAutocomplete([{
-        placeId: 'node:9712313',
+        placeId,
         mainText: 'Tokio Hauptbahnhof',
         secondaryText: '東京駅丸の内駅舎',
-        source: 'openstreetmap',
+        source,
         lat: 35.6811816,
         lng: 139.76598265,
       }]),
@@ -170,7 +169,7 @@ describe('PlPlaceSearch', () => {
     fireEvent.change(input, { target: { value: 'Tok' } })
     fireEvent.click(await screen.findByText('Tokio Hauptbahnhof'))
 
-    await waitFor(() => expect(onPick).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(onPick).toHaveBeenCalledTimes(1))
     expect(searchBodies).toHaveLength(0)
     expect(onPick).toHaveBeenLastCalledWith(expect.objectContaining({
       name: 'Tokio Hauptbahnhof', lat: '35.6811816', lng: '139.76598265',
@@ -203,6 +202,19 @@ describe('PlPlaceSearch', () => {
 
     await waitFor(() => expect(searchBodies).toHaveLength(1))
     expect(onPick).toHaveBeenLastCalledWith(expect.objectContaining({ lat: '48.8606' }))
+  })
+
+  it('does not silently pick an unrelated search result after a details miss', async () => {
+    server.use(recordAutocomplete(),
+      http.get('/api/maps/details/:placeId', () => HttpResponse.json({ place: null })),
+      recordSearch([{ ...LOUVRE, name: 'Nearby shop', google_place_id: 'other-id', osm_id: 'node:other' }]),
+    )
+    const { input, onPick, planner } = setup()
+    fireEvent.change(input, { target: { value: 'Lou' } })
+    fireEvent.click(await screen.findByText('Louvre'))
+    await waitFor(() => expect(planner.toast.error).toHaveBeenCalledWith('places.mapsSearchError'))
+    expect(onPick).not.toHaveBeenCalled()
+    expect(input).toHaveValue('Lou')
   })
 
   it('FE-MOB-PLSRCH-007: restores the typed query and toasts when nothing resolves', async () => {

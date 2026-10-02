@@ -62,6 +62,7 @@ const places: TranslationStrings = {
   'places.allPlanned': 'Semua tempat sudah direncanakan',
   'places.noneFound': 'Tidak ada tempat ditemukan',
   'places.editPlace': 'Edit Tempat',
+  'places.clearProviderDetails': 'Hapus detail tertaut dan nomor telepon',
   'places.formName': 'Nama',
   'places.formNamePlaceholder': 'mis. Menara Eiffel',
   'places.formDescription': 'Deskripsi',

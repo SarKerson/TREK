@@ -63,6 +63,7 @@ const places: TranslationStrings = {
   'places.allPlanned': 'Усі місця заплановані',
   'places.noneFound': 'Місця не знайдені',
   'places.editPlace': 'Редагувати місце',
+  'places.clearProviderDetails': 'Очистити пов’язані відомості й телефон',
   'places.formName': 'Назва',
   'places.formNamePlaceholder': 'наприклад, Ейфелева вежа',
   'places.formDescription': 'Опис',

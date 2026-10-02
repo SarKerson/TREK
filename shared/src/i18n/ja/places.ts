@@ -63,6 +63,7 @@ const places: TranslationStrings = {
   'places.allPlanned': 'すべての場所が計画済みです',
   'places.noneFound': '場所が見つかりません',
   'places.editPlace': '場所を編集',
+  'places.clearProviderDetails': 'リンクされた詳細と電話番号を削除',
   'places.formName': '名前',
   'places.formNamePlaceholder': '例：エッフェル塔',
   'places.formDescription': '説明',

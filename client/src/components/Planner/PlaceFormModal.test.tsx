@@ -10,6 +10,7 @@ import { usePermissionsStore } from '../../store/permissionsStore';
 import { resetAllStores, seedStore } from '../../../tests/helpers/store';
 import { buildUser, buildTrip, buildPlace, buildCategory, buildAssignment } from '../../../tests/helpers/factories';
 import PlaceFormModal from './PlaceFormModal';
+import { mapsApi } from '../../api/client';
 
 // Mock CustomTimePicker so we get a simple text input instead of the portal-heavy UI
 vi.mock('../shared/CustomTimePicker', () => ({
@@ -486,7 +487,7 @@ describe('PlaceFormModal', () => {
       http.get('/api/maps/details/:placeId', () => HttpResponse.json({ error: 'boom' }, { status: 500 })),
       http.post('/api/maps/search', () =>
         HttpResponse.json({
-          places: [{ name: 'Eiffel Tower', address: 'Paris, France', lat: '48.8584', lng: '2.2945' }],
+          places: [{ name: 'Eiffel Tower', address: 'Paris, France', lat: '48.8584', lng: '2.2945', osm_id: 'node:123' }],
           source: 'openstreetmap',
         }),
       ),
@@ -503,7 +504,7 @@ describe('PlaceFormModal', () => {
     delete window.__addToast;
   });
 
-  it('FE-PLANNER-PLACEFORM-021e: an OpenStreetMap suggestion keeps its own coordinates instead of searching for its label', async () => {
+  it.each([['openstreetmap', 'node:9712313'], ['trek-places', 'gers:station']])('a %s suggestion keeps its own coordinates instead of searching for its label', async (source, placeId) => {
     // The layer's second line is the name written on the building, not an
     // address. Joining the two and searching for it asks a question nobody
     // typed, and whatever came back first was taken as the place the user had
@@ -514,10 +515,10 @@ describe('PlaceFormModal', () => {
       http.post('/api/maps/autocomplete', () =>
         HttpResponse.json({
           suggestions: [{
-            placeId: 'node:9712313',
+            placeId,
             mainText: 'Tokio Hauptbahnhof',
             secondaryText: '東京駅丸の内駅舎',
-            source: 'openstreetmap',
+            source,
             lat: 35.6811816,
             lng: 139.76598265,
           }],
@@ -552,7 +553,7 @@ describe('PlaceFormModal', () => {
       http.get('/api/maps/details/:placeId', () => HttpResponse.json({ place: null, disabled: true })),
       http.post('/api/maps/search', () =>
         HttpResponse.json({
-          places: [{ name: 'Eiffel Tower', address: 'Paris, France', lat: '48.8584', lng: '2.2945' }],
+          places: [{ name: 'Eiffel Tower', address: 'Paris, France', lat: '48.8584', lng: '2.2945', osm_id: 'node:123' }],
           source: 'openstreetmap',
         }),
       ),
@@ -563,6 +564,25 @@ describe('PlaceFormModal', () => {
     await user.click(suggestion);
 
     expect(await screen.findByDisplayValue('48.8584')).toBeInTheDocument();
+  });
+
+  it('never replaces an unresolved station suggestion with the first nearby shop', async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.post('/api/maps/autocomplete', () => HttpResponse.json({ suggestions: [{
+        placeId: 'station-id', mainText: 'Nankai Station', secondaryText: 'Namba',
+      }] })),
+      http.get('/api/maps/details/:placeId', () => HttpResponse.json({ place: null })),
+      http.post('/api/maps/search', () => HttpResponse.json({ places: [{
+        name: 'SweetsBox', google_place_id: 'shop-id', lat: 34.665, lng: 135.501, phone: '+81-shop',
+      }] })),
+    );
+    render(<PlaceFormModal {...defaultProps} place={buildPlace({ name: 'Our station', lat: 34, lng: 135 })} />);
+    await user.type(screen.getByPlaceholderText('Search places...'), 'Nankai');
+    await user.click(await screen.findByText('Nankai Station'));
+    await waitFor(() => expect(screen.getByPlaceholderText('Search places...')).toHaveValue('Nankai'));
+    expect(screen.getByPlaceholderText(/e.g. Eiffel Tower/)).toHaveValue('Our station');
+    expect(screen.getByPlaceholderText(/Latitude/)).toHaveValue('34');
   });
 
   it('FE-PLANNER-PLACEFORM-021d: suggestion click shows error only when the fallback also finds nothing', async () => {
@@ -1805,6 +1825,100 @@ describe('PlaceFormModal remaining branches', () => {
       expect(payload.osm_id).toBe('relation:3600565');
       expect(payload.google_place_id).toBeFalsy();
     });
+
+    it('clears a saved restaurant identity when a different provider result is picked', async () => {
+      const user = userEvent.setup();
+      const onSave = vi.fn();
+      render(<PlaceFormModal {...defaultProps} onSave={onSave} place={buildPlace({
+        name: 'Nankai Station', google_place_id: 'old-shop', google_ftid: 'old-ftid',
+        osm_id: 'node:1', phone: '+81-old-shop', notes: 'Meet at gates', website: 'https://mine.example',
+      })} />);
+      await searchFor(user, { ...STATION, osm_id: 'node:2' });
+      await user.click(screen.getByRole('button', { name: /^Update$/i }));
+      await waitFor(() => expect(onSave).toHaveBeenCalled());
+      expect(onSave.mock.calls[0][0]).toMatchObject({ google_place_id: '', google_ftid: '',
+        osm_id: 'node:2', phone: '', notes: 'Meet at gates', website: 'https://mine.example' });
+    });
+
+    it.each(['Latitude', 'Longitude'])('clears linked details after manually changing %s', async (field) => {
+      const onSave = vi.fn();
+      render(<PlaceFormModal {...defaultProps} onSave={onSave} place={buildPlace({
+        name: 'Nankai Station', google_place_id: 'old-shop', phone: '+81-old-shop',
+        notes: 'Meet at gates', website: 'https://mine.example',
+      })} />);
+      fireEvent.change(screen.getByPlaceholderText(new RegExp(field)), { target: { value: '34.665' } });
+      fireEvent.click(screen.getByRole('button', { name: /^Update$/i }));
+      await waitFor(() => expect(onSave).toHaveBeenCalled());
+      expect(onSave.mock.calls[0][0]).toMatchObject({ google_place_id: '', google_ftid: '',
+        osm_id: '', amap_poi_id: '', phone: '', name: 'Nankai Station', notes: 'Meet at gates', website: 'https://mine.example' });
+    });
+
+    it('lets the user clear linked details without losing their place or coordinates', async () => {
+      const onSave = vi.fn();
+      render(<PlaceFormModal {...defaultProps} onSave={onSave} place={buildPlace({
+        name: 'Nankai Station', lat: 34.665, lng: 135.501, google_place_id: 'old-shop', phone: '+81-old-shop',
+        description: 'Our meeting point', notes: 'Meet at gates', website: 'https://mine.example',
+      })} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Clear linked details and phone' }));
+      expect(onSave).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: /^Update$/i }));
+      await waitFor(() => expect(onSave).toHaveBeenCalled());
+      expect(onSave.mock.calls[0][0]).toMatchObject({ google_place_id: '', google_ftid: '', osm_id: '',
+        amap_poi_id: '', phone: '', name: 'Nankai Station', lat: 34.665, lng: 135.501,
+        description: 'Our meeting point', notes: 'Meet at gates', website: 'https://mine.example' });
+    });
+
+    it.each(['clearing linked details', 'editing latitude'] as const)(
+      'ignores late autocomplete details after %s',
+      async (action) => {
+        const user = userEvent.setup();
+        const onSave = vi.fn();
+        type DetailsResponse = Awaited<ReturnType<typeof mapsApi.details>>;
+        let resolveDetails!: (value: DetailsResponse) => void;
+        const pendingDetails = new Promise<DetailsResponse>((resolve) => { resolveDetails = resolve; });
+        const detailsSpy = vi.spyOn(mapsApi, 'details').mockReturnValue(pendingDetails);
+        server.use(http.post('/api/maps/autocomplete', () => HttpResponse.json({
+          suggestions: [{ placeId: 'pending-shop', mainText: 'Nankai Station', secondaryText: 'Namba' }],
+          source: 'google',
+        })));
+        try {
+          render(<PlaceFormModal {...defaultProps} onSave={onSave} place={buildPlace({
+            name: 'Our station', lat: 34.665, lng: 135.501,
+            google_place_id: 'old-shop', google_ftid: 'old-ftid', osm_id: 'node:1', amap_poi_id: 'amap:old',
+            phone: '+81-old-shop', notes: 'Meet at gates', description: 'Our meeting point',
+          })} />);
+          await user.type(screen.getByPlaceholderText('Search places...'), 'Nankai');
+          await user.click(await screen.findByText('Nankai Station'));
+          expect(detailsSpy).toHaveBeenCalledWith('pending-shop', expect.any(String), expect.anything());
+
+          if (action === 'clearing linked details') {
+            fireEvent.click(screen.getByRole('button', { name: 'Clear linked details and phone' }));
+          } else {
+            fireEvent.change(screen.getByPlaceholderText(/Latitude/i), { target: { value: '34.666' } });
+          }
+          await act(async () => {
+            resolveDetails({ place: {
+              name: 'SweetsBox', lat: 35, lng: 136, google_place_id: 'pending-shop', phone: '+81-late-shop',
+            } });
+          });
+
+          const expectedLat = action === 'editing latitude' ? 34.666 : 34.665;
+          expect(screen.getByPlaceholderText(/e\.g\. Eiffel Tower/i)).toHaveValue('Our station');
+          expect(screen.getByPlaceholderText(/Latitude/i)).toHaveValue(String(expectedLat));
+          expect(screen.getByPlaceholderText(/Longitude/i)).toHaveValue('135.501');
+          expect(screen.queryByRole('button', { name: 'Clear linked details and phone' })).not.toBeInTheDocument();
+          fireEvent.click(screen.getByRole('button', { name: /^Update$/i }));
+          await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+          expect(onSave.mock.calls[0][0]).toMatchObject({
+            name: 'Our station', lat: expectedLat, lng: 135.501,
+            google_place_id: '', google_ftid: '', osm_id: '', amap_poi_id: '', phone: '',
+            notes: 'Meet at gates', description: 'Our meeting point',
+          });
+        } finally {
+          detailsSpy.mockRestore();
+        }
+      },
+    );
 
     it('FE-PLANNER-PLACEFORM-067: editing a saved place keeps its stored website', async () => {
       // The dangerous direction: the form was filled from the database, so a

@@ -11,12 +11,13 @@ import { useCanDo } from '../../store/permissionsStore'
 import { useTripStore } from '../../store/tripStore'
 import { useSettingsStore } from '../../store/settingsStore'
 import CollectionPicker from '../Collections/CollectionPicker'
+import ClearPlaceDetailsButton from './ClearPlaceDetailsButton'
 import PlaceDetailsColumn, { type PlaceDetailsSelection } from './PlaceDetailsColumn'
 import { useToast } from '../shared/Toast'
 import { Search, Paperclip, X, AlertTriangle, Loader2, Plus, RotateCcw } from 'lucide-react'
 import { useTranslation } from '../../i18n'
 import CustomTimePicker from '../shared/CustomTimePicker'
-import { DEFAULT_FORM, isMapUrl, mergeResult, type PlaceFormData, type ResultField } from './PlaceFormModal.helpers'
+import { DEFAULT_FORM, changePlaceFormField, clearProviderDetails, providerDetails, isMapUrl, mergeResult, type PlaceFormData, type ResultField } from './PlaceFormModal.helpers'
 import { getApiErrorMessage } from '../../utils/apiError'
 import { offersGoogleRetry, selectGoogleHoldsSlot, sourceLabelFor } from '../../utils/placeSource'
 import { useLocationBias } from '../../hooks/useLocationBias'
@@ -24,6 +25,7 @@ import { BookingCostsSection } from './BookingCostsSection'
 import type { BookingExpenseRequest } from './BookingCostsSection.types'
 import type { Place, Category, Assignment, BudgetItem } from '../../types'
 import { NumericInput } from '../shared/NumericInput'
+import { matchingSuggestionPlace, placeFromSuggestion } from '../../utils/placeSuggestion'
 import { PlacesSession } from '../../utils/placesSession'
 import ServiceStopSection from '../Roadtrip/ServiceStopSection'
 import { DEFAULT_SERVICE_KIND, serviceStopChoice, type ServiceStopMode } from '../Roadtrip/manualStop'
@@ -232,6 +234,7 @@ function usePlaceFormModal(props: PlaceFormModalProps) {
         notes: place.notes || '',
         transport_mode: place.transport_mode || 'walking',
         website: place.website || '',
+        ...providerDetails(place),
         // Carried through every edit. Without it, opening a fuel stop to fix a typo
         // submits an empty kind and turns it back into a numbered destination.
         // duration_minutes deliberately stays out: how long a stay takes belongs to the
@@ -277,8 +280,8 @@ function usePlaceFormModal(props: PlaceFormModalProps) {
     // A fresh dialog owns nothing yet. The exception is a POI tapped on the map
     // or a right-click place: those arrive prefilled from a place, so the same
     // fields belong to it and a later search pick may clear them. An existing
-    // place being edited is the opposite — everything on that form came out of
-    // the database and none of it is a search result's to drop.
+    // place's editable text is the opposite: without provenance, preserve it.
+    // Provider IDs and phone are handled separately by mergeResult.
     autoFilledRef.current = new Set(
       !place && prefillCoords
         ? (['name', 'address', 'lat', 'lng', 'website', 'phone', 'osm_id'] as ResultField[]).filter(
@@ -420,10 +423,22 @@ function usePlaceFormModal(props: PlaceFormModalProps) {
     }
   }, [mapsSearch, fetchSuggestions])
 
-  const handleChange = (field: string, value: string) => {
+  const handleChange = (field: keyof PlaceFormData, value: string) => {
     // Typed by hand, so the next pick must not clear it.
     autoFilledRef.current.delete(field as ResultField)
-    setForm(prev => ({ ...prev, [field]: value }))
+    setForm(prev => changePlaceFormField(prev, field, value))
+    if (field === 'lat' || field === 'lng') {
+      searchEpochRef.current += 1
+      setIsSearchingMaps(false)
+      setDetailsSelection(null)
+    }
+  }
+
+  const handleClearProviderDetails = () => {
+    searchEpochRef.current += 1
+    setIsSearchingMaps(false)
+    setForm(clearProviderDetails)
+    setDetailsSelection(null)
   }
 
   const handleMapsSearch = async (provider?: 'google') => {
@@ -439,17 +454,8 @@ function usePlaceFormModal(props: PlaceFormModalProps) {
       if (!provider && isMapUrl(trimmed)) {
         const resolved = await mapsApi.resolveUrl(trimmed)
         if (epoch !== searchEpochRef.current) return
-        if (resolved.lat && resolved.lng) {
-          setForm(prev => ({
-            ...prev,
-            name: resolved.name || prev.name,
-            address: resolved.address || prev.address,
-            lat: String(resolved.lat),
-            lng: String(resolved.lng),
-            google_ftid: resolved.google_ftid || prev.google_ftid,
-          }))
-          setMapsResults([])
-          setMapsSearch('')
+        if (resolved.lat != null && resolved.lng != null) {
+          handleSelectMapsResult(resolved)
           toast.success(t('places.urlResolved'))
           return
         }
@@ -525,7 +531,6 @@ function usePlaceFormModal(props: PlaceFormModalProps) {
     const previousSearch = mapsSearch
     const epoch = searchEpochRef.current
     setMapsSearch('')
-    setForm(prev => ({ ...prev, name: suggestion.mainText }))
     setIsSearchingMaps(true)
     try {
       // The details lookup is a fragile second hop — it can fail when the
@@ -549,26 +554,12 @@ function usePlaceFormModal(props: PlaceFormModalProps) {
       // opening that is over, and the fallback search below is not worth a
       // request nobody will see.
       if (epoch !== searchEpochRef.current) return
-      if (!place && suggestion.source === 'openstreetmap' && suggestion.lat != null && suggestion.lng != null) {
-        // The layer's rows carry no address; their second line is the name
-        // written on the building. Searching for "Tokio Hauptbahnhof, 東京駅"
-        // is not a question anybody asked, and its first answer would be
-        // whatever the index made of it — a different place, chosen silently.
-        // The suggestion already knows where it is, so use that.
-        place = {
-          name: suggestion.mainText,
-          address: '',
-          lat: suggestion.lat,
-          lng: suggestion.lng,
-          osm_id: suggestion.placeId,
-          source: 'openstreetmap',
-        }
-      }
+      if (!place) place = placeFromSuggestion(suggestion)
       if (!place) {
         const query = [suggestion.mainText, suggestion.secondaryText].filter(Boolean).join(', ')
         const search = await mapsApi.search(query, language, locationBiasPoint)
         if (epoch !== searchEpochRef.current) return
-        place = search.places?.[0] ?? null
+        place = matchingSuggestionPlace(suggestion, search.places)
       }
       if (place) {
         handleSelectMapsResult(place, acRank >= 0 ? { mode: 'autocomplete', rank: acRank, count: acCount } : undefined)
@@ -818,6 +809,7 @@ function usePlaceFormModal(props: PlaceFormModalProps) {
     searchInputRef,
     fetchSuggestions,
     handleChange,
+    handleClearProviderDetails,
     handleMapsSearch,
     handleSelectMapsResult,
     handleSelectSuggestion,
@@ -896,6 +888,7 @@ export default function PlaceFormModal(props: PlaceFormModalProps) {
     searchInputRef,
     fetchSuggestions,
     handleChange,
+    handleClearProviderDetails,
     handleMapsSearch,
     handleSelectMapsResult,
     handleSelectSuggestion,
@@ -1165,6 +1158,7 @@ export default function PlaceFormModal(props: PlaceFormModalProps) {
               className="form-input"
             />
           </div>
+          <ClearPlaceDetailsButton form={form} onClear={handleClearProviderDetails} t={t} />
         </div>
 
         {/* Category, or for a stop on a drive the kind of stop and where it belongs.

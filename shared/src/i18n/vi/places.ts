@@ -63,6 +63,7 @@ const places: TranslationStrings = {
   'places.allPlanned': 'Tất cả các địa điểm đều được quy hoạch',
   'places.noneFound': 'Không tìm thấy địa điểm nào',
   'places.editPlace': 'Chỉnh sửa địa điểm',
+  'places.clearProviderDetails': 'Xóa thông tin liên kết và số điện thoại',
   'places.formName': 'Tên',
   'places.formNamePlaceholder': 'ví dụ. Tháp Eiffel',
   'places.formDescription': 'Miêu tả',

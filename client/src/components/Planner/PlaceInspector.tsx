@@ -108,11 +108,15 @@ function usePlaceDetails(googlePlaceId, osmId, language) {
     if (detailsCache.has(cacheKey)) { setDetails(detailsCache.get(cacheKey)); return }
     const cached = getSessionCache(cacheKey)
     if (cached) { detailsCache.set(cacheKey, cached); setDetails(cached); return }
+    let current = true
+    setDetails(null)
     mapsApi.details(detailId, language).then(data => {
+      if (!current) return
       detailsCache.set(cacheKey, data.place)
       setSessionCache(cacheKey, data.place)
       setDetails(data.place)
     }).catch(() => {})
+    return () => { current = false }
   }, [detailId, language])
   return details
 }
